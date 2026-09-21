@@ -18,6 +18,7 @@ import {
   isReservedId,
 } from './types.ts'
 import { clamp, deepEqual } from './utils.ts'
+import { WriteQueue } from './write-queue.ts'
 
 /**
  * 工作区：内存里的树 + 落盘 + 事件日志 + 撤销栈。
@@ -76,6 +77,8 @@ export class Workspace {
 
   private readonly persistence: Persistence
   private readonly eventLog: EventLog
+  /** 命令串行队列，见 execute() 里的说明。 */
+  private readonly commandQueue = new WriteQueue()
   private readonly cards = new Map<string, Card>()
   private readonly dirty = new Set<string>()
   private readonly purged: string[] = []
@@ -298,7 +301,17 @@ export class Workspace {
     this.assertOpen()
     this.activeOperations += 1
     try {
-      return await this.executeInner(command, options)
+      /*
+       * 命令必须串行执行。
+       *
+       * executeInner 的流程是「同步改内存 → 异步落盘 → 追加事件」，而 pendingEvents
+       * 是实例状态。两个命令交错跑的话，B 开头那句 `this.pendingEvents = []`
+       * 会把 A 刚记下的事件抹掉——卡片数据写对了，但「谁改了什么」静默丢了。
+       *
+       * 注意这里是「提交时」检查开关，不在队列里再检查一次：close() 会等所有已提交的
+       * 命令跑完，所以在关闭途中已经排在队里的命令应该正常执行完，而不是中途被拒。
+       */
+      return await this.commandQueue.run(() => this.executeInner(command, options))
     } finally {
       this.endOperation()
     }

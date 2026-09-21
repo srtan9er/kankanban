@@ -158,6 +158,47 @@ describe('优雅关闭', () => {
   })
 })
 
+describe('并发写入', () => {
+  it('并发的 execute 不会互相踩事件缓冲区', async () => {
+    const t = await open()
+    const column = t.ws.childCards('001')[0]!.id
+
+    const outcomes = await Promise.all([
+      t.ws.execute({ type: 'card_create', parent: column, title: 'A' }),
+      t.ws.execute({ type: 'card_create', parent: column, title: 'B' }),
+      t.ws.execute({ type: 'card_create', parent: column, title: 'C' }),
+    ])
+
+    // 每次调用都该拿到恰好一条自己的事件
+    for (const outcome of outcomes) {
+      expect(outcome.events).toHaveLength(1)
+    }
+
+    // 三条事件一条不少，也一条不多
+    const events = await t.ws.readEvents()
+    expect(events).toHaveLength(3)
+    expect(new Set(events.map((e) => e.seq)).size).toBe(3)
+
+    // 三张卡都在
+    expect(t.ws.childCards(column)).toHaveLength(3)
+  })
+
+  it('并发写入之后，撤销栈也是完整的', async () => {
+    const t = await open()
+    const column = t.ws.childCards('001')[0]!.id
+
+    await Promise.all([
+      t.ws.execute({ type: 'card_create', parent: column, title: 'A' }),
+      t.ws.execute({ type: 'card_create', parent: column, title: 'B' }),
+    ])
+
+    expect(t.ws.canUndo()).toBe(true)
+    await t.ws.undo()
+    await t.ws.undo()
+    expect(t.ws.childCards(column)).toHaveLength(0)
+  })
+})
+
 describe('完整性校验', () => {
   it('parent 指向不存在的卡片时拒绝加载，并说清哪张卡', async () => {
     const t = await open()
