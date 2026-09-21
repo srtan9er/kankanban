@@ -49,6 +49,15 @@ export interface ExecuteOptions {
 export interface ExecuteOutcome {
   /** 这次执行产生的事件。顺序即发生顺序。 */
   events: KkbEvent[]
+  /**
+   * 内容有变化的卡片 id。
+   *
+   * 给 app 层用的：主进程照着这个把「变化后的卡片对象」推给所有窗口，
+   * 渲染进程直接替换即可，不需要把事件应用逻辑再实现一遍——两份逻辑一定会漂移。
+   */
+  changed: string[]
+  /** 被彻底删除的卡片 id（撤销建卡时会用到）。 */
+  removed: string[]
   /** card_create 建出来的卡片 id。 */
   created?: string
   /** 阶段二要用：哪些卡应该开窗/关窗。 */
@@ -330,6 +339,9 @@ export class Workspace {
     }
 
     const stamps = this.stampUpdatedAt(options.updatedAtTargets)
+    // 在 flush 清空之前抓一份，广播要用
+    const changed = [...this.dirty].filter((id) => this.cards.has(id))
+    const removed = [...this.purged]
     await this.flush()
 
     const events = this.pendingEvents
@@ -351,6 +363,8 @@ export class Workspace {
 
     return {
       events,
+      changed,
+      removed,
       ...(result.created !== undefined ? { created: result.created } : {}),
       windowOps: result.windowOps,
       warnings: result.warnings,
@@ -434,6 +448,9 @@ export class Workspace {
       },
 
       nextCardId: () => createCardId((id) => this.cards.has(id)),
+
+      floatingCount: () =>
+        [...this.cards.values()].filter((card) => card.parent === null && !isReservedId(card.id)).length,
 
       setField: (id, field, value, options) => {
         const card = this.cards.get(id)

@@ -1,0 +1,28 @@
+{
+  "name": "@kankanban/app",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "KankanBan 桌面端：Electron 主进程 + React 渲染进程。",
+  "main": "src/main/main.ts",
+  "scripts": {
+    "start": "electron src/main/main.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@kankanban/core": "workspace:*",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "zustand": "^5.0.15"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.2",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "electron": "^44.4.3",
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.0"
+  }
+}

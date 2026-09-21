@@ -1,0 +1,848 @@
+/* KankanBan 样式。
+ *
+ * 两个视觉基调：
+ *   浮卡 —— 浅色卡片飘在桌面上，靠圆角和阴影立起来
+ *   main 板 —— 深色，像编辑器，因为它干的活更像编辑器
+ *
+ * 圆角全靠 CSS。注意：整个渲染进程里不能出现 -webkit-app-region: drag，
+ * 它会让这些圆角被合成层绕过（spike/corner.ts）。
+ */
+
+:root {
+  --accent: #4a90d9;
+  --paper: #fbfbfd;
+  --paper-2: #f2f4f8;
+  --ink: #1d2025;
+  --ink-soft: #5c6470;
+  --ink-faint: #8b939f;
+  --line: rgba(20, 25, 35, 0.1);
+  --danger: #d9534f;
+
+  --bg: #16181c;
+  --bg-2: #1d2026;
+  --bg-3: #24282f;
+  --fg: #e6e9ee;
+  --fg-soft: #98a1ad;
+  --fg-faint: #67707c;
+  --line-dark: rgba(255, 255, 255, 0.08);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+  /* 窗口默认透明；main 板自己铺底色 */
+  background: transparent;
+  font: 13px/1.6 "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+  color: var(--ink);
+  overflow: hidden;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.spacer {
+  flex: 1 1 auto;
+}
+
+.loading,
+.fatal {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  color: var(--ink-faint);
+}
+
+.fatal {
+  color: var(--danger);
+  padding: 16px;
+  text-align: center;
+}
+
+/* =========================================================================
+   浮卡窗口
+   ========================================================================= */
+
+/* 留一圈透明边距给阴影 —— 窗口是方的，卡片是自己画的圆角 */
+.window-frame {
+  height: 100%;
+  padding: 10px;
+}
+
+.window-card {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--paper);
+  border-radius: 12px;
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.16),
+    0 12px 32px rgba(0, 0, 0, 0.26);
+  overflow: hidden;
+}
+
+.window-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 6px 0 10px;
+  background: linear-gradient(180deg, #ffffff, var(--paper-2));
+  border-bottom: 1px solid var(--line);
+  /* 拖动是主进程实现的，但这里要挡住文本选择，否则拖窗口会选中标题 */
+  user-select: none;
+  cursor: grab;
+}
+
+.window-head:active {
+  cursor: grabbing;
+}
+
+.grip {
+  width: 3px;
+  height: 12px;
+  border-radius: 2px;
+  background: var(--accent);
+  opacity: 0.75;
+  flex: none;
+}
+
+.title {
+  font-weight: 600;
+  font-size: 13px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.title:hover {
+  background: rgba(74, 144, 217, 0.12);
+}
+
+.title-input {
+  font: inherit;
+  font-weight: 600;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 2px 4px;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  background: #fff;
+  outline: none;
+}
+
+.win-btn {
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  color: var(--ink-soft);
+  font-size: 13px;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+
+.win-btn:hover {
+  background: rgba(0, 0, 0, 0.07);
+}
+
+.win-btn.danger:hover {
+  background: var(--danger);
+  color: #fff;
+}
+
+.window-foot {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  border-top: 1px solid var(--line);
+  background: var(--paper-2);
+  font-size: 11px;
+  color: var(--ink-faint);
+}
+
+.foot-btn {
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 5px;
+  color: var(--ink-soft);
+}
+
+.foot-btn:hover:not(:disabled) {
+  background: rgba(74, 144, 217, 0.14);
+  color: var(--accent);
+}
+
+.foot-btn:disabled,
+.wide-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* =========================================================================
+   三区域
+   ========================================================================= */
+
+.shell {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.crumbs {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 8px;
+  flex-wrap: wrap;
+  background: var(--paper);
+  border-bottom: 1px solid var(--line);
+}
+
+.crumb-wrap {
+  display: inline-flex;
+  align-items: center;
+}
+
+.crumb-sep {
+  color: var(--ink-faint);
+  margin: 0 1px;
+  font-size: 11px;
+}
+
+.crumb {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  color: var(--ink-soft);
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.crumb:hover:not(:disabled) {
+  background: rgba(74, 144, 217, 0.12);
+  color: var(--accent);
+}
+
+.crumb.current {
+  color: var(--ink);
+  font-weight: 600;
+  cursor: default;
+}
+
+.body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 8px 12px;
+}
+
+.body-view {
+  min-height: 100%;
+  cursor: text;
+}
+
+.body-input {
+  width: 100%;
+  height: 100%;
+  min-height: 60px;
+  resize: none;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font: 12px/1.6 "Cascadia Mono", "Consolas", monospace;
+  outline: none;
+  background: #fff;
+}
+
+.divider {
+  flex: none;
+  height: 7px;
+  cursor: ns-resize;
+  background: linear-gradient(180deg, transparent, rgba(20, 25, 35, 0.05));
+  border-top: 1px solid var(--line);
+  display: grid;
+  place-items: center;
+  touch-action: none;
+}
+
+.divider::after {
+  content: "";
+  width: 32px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--line);
+}
+
+.divider:hover::after {
+  background: var(--accent);
+  opacity: 0.6;
+}
+
+.kids-slot {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  background: var(--paper-2);
+}
+
+.kids-slot.collapsed {
+  flex: none !important;
+  height: auto !important;
+}
+
+.kids-stub {
+  width: 100%;
+  padding: 1px 10px;
+  font-size: 10px;
+  color: var(--ink-faint);
+  text-align: left;
+  background: var(--paper-2);
+}
+
+.kids {
+  padding: 8px;
+  display: flex;
+  gap: 6px;
+  min-height: 100%;
+  align-content: flex-start;
+}
+
+.kids.row {
+  flex-direction: row;
+  flex-wrap: wrap;
+}
+
+.kids.column {
+  flex-direction: column;
+}
+
+.kids.grid {
+  flex-wrap: wrap;
+}
+
+.kids.grid .compact {
+  width: 150px;
+}
+
+.kids.empty {
+  align-items: stretch;
+}
+
+.kids-blank {
+  flex: 1 1 auto;
+  display: grid;
+  place-items: center;
+  min-height: 54px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  color: var(--ink-faint);
+  font-size: 11px;
+}
+
+.kids.kanban {
+  flex-direction: row;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.lane {
+  flex: 1 1 0;
+  min-width: 120px;
+  display: flex;
+  flex-direction: column;
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.lane-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  border-bottom: 1px solid var(--line);
+}
+
+.lane-count {
+  margin-left: auto;
+  font-weight: 400;
+  color: var(--ink-faint);
+}
+
+.lane-body {
+  flex: 1 1 auto;
+  min-height: 40px;
+  overflow: auto;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+/* =========================================================================
+   紧凑卡
+   ========================================================================= */
+
+.compact {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: 6px;
+  padding: 5px 8px;
+  min-width: 88px;
+  max-width: 240px;
+  user-select: none;
+}
+
+.compact:hover {
+  border-color: rgba(74, 144, 217, 0.5);
+  box-shadow: 0 2px 8px rgba(20, 25, 35, 0.1);
+}
+
+.compact.is-floating {
+  background: #fffdf5;
+}
+
+.compact-title {
+  font-size: 12px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compact-meta {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-top: 3px;
+}
+
+.badge {
+  font-size: 10px;
+  line-height: 15px;
+  padding: 0 5px;
+  border-radius: 8px;
+  background: rgba(20, 25, 35, 0.07);
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+.badge.floating {
+  background: rgba(249, 168, 37, 0.22);
+  color: #96690d;
+}
+
+.badge.due {
+  background: rgba(217, 83, 79, 0.14);
+  color: #a83b37;
+}
+
+.badge.tag {
+  background: rgba(74, 144, 217, 0.14);
+  color: #2f6ba8;
+}
+
+/* =========================================================================
+   Markdown
+   ========================================================================= */
+
+.md > *:first-child {
+  margin-top: 0;
+}
+
+.md > *:last-child {
+  margin-bottom: 0;
+}
+
+.md h1,
+.md h2,
+.md h3,
+.md h4 {
+  margin: 10px 0 5px;
+  line-height: 1.35;
+}
+
+.md h1 {
+  font-size: 16px;
+}
+
+.md h2 {
+  font-size: 14px;
+}
+
+.md h3,
+.md h4 {
+  font-size: 13px;
+}
+
+.md p,
+.md ul,
+.md ol,
+.md blockquote,
+.md pre {
+  margin: 5px 0;
+}
+
+.md ul,
+.md ol {
+  padding-left: 20px;
+}
+
+.md blockquote {
+  padding: 4px 10px;
+  border-left: 3px solid var(--accent);
+  background: rgba(74, 144, 217, 0.07);
+  border-radius: 0 5px 5px 0;
+  color: var(--ink-soft);
+}
+
+.md code {
+  font: 11px/1.5 "Cascadia Mono", "Consolas", monospace;
+  background: rgba(20, 25, 35, 0.07);
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+.md pre {
+  background: #22262c;
+  color: #e6e9ee;
+  padding: 8px 10px;
+  border-radius: 6px;
+  overflow: auto;
+}
+
+.md pre code {
+  background: none;
+  padding: 0;
+  color: inherit;
+}
+
+.md hr {
+  border: none;
+  border-top: 1px solid var(--line);
+  margin: 10px 0;
+}
+
+.md a {
+  color: var(--accent);
+}
+
+.md-empty {
+  color: var(--ink-faint);
+  font-size: 11px;
+  font-style: italic;
+}
+
+/* =========================================================================
+   提示条
+   ========================================================================= */
+
+.notice {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 34px;
+  background: rgba(28, 32, 38, 0.94);
+  color: #fff;
+  font-size: 11px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
+}
+
+.board-notice {
+  left: 50%;
+  right: auto;
+  transform: translateX(-50%);
+  bottom: 20px;
+  max-width: 60%;
+  font-size: 12px;
+  padding: 8px 14px;
+}
+
+/* =========================================================================
+   main 板
+   ========================================================================= */
+
+.board-layout {
+  position: relative;
+  height: 100%;
+  display: flex;
+  background: var(--bg);
+  color: var(--fg);
+}
+
+.rail {
+  flex: none;
+  width: 232px;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-2);
+  border-right: 1px solid var(--line-dark);
+}
+
+.rail.right {
+  width: 260px;
+  border-right: none;
+  border-left: 1px solid var(--line-dark);
+  overflow: auto;
+}
+
+.rail-head {
+  padding: 12px 14px 10px;
+  border-bottom: 1px solid var(--line-dark);
+}
+
+.rail-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.rail-sub {
+  font-size: 10px;
+  color: var(--fg-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+}
+
+.rail-section {
+  padding: 10px 8px 4px;
+}
+
+.rail-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fg-faint);
+  padding: 0 6px 6px;
+}
+
+.rail-count {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--fg-faint);
+}
+
+.rail-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--fg-soft);
+  text-align: left;
+}
+
+.rail-item:hover {
+  background: var(--bg-3);
+  color: var(--fg);
+}
+
+.rail-item.active {
+  background: rgba(74, 144, 217, 0.18);
+  color: #9ec6f0;
+}
+
+.rail-item-title {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rail-empty {
+  padding: 6px 8px;
+  font-size: 11px;
+  color: var(--fg-faint);
+}
+
+.rail-foot {
+  margin-top: auto;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-top: 1px solid var(--line-dark);
+}
+
+.rail-foot .row {
+  display: flex;
+  gap: 6px;
+}
+
+.wide-btn {
+  flex: 1 1 0;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: var(--bg-3);
+  color: var(--fg-soft);
+  font-size: 12px;
+}
+
+.wide-btn:hover:not(:disabled) {
+  background: #2d323a;
+  color: var(--fg);
+}
+
+.wide-btn.primary {
+  background: rgba(74, 144, 217, 0.2);
+  color: #9ec6f0;
+}
+
+.rail-stats {
+  font-size: 10px;
+  color: var(--fg-faint);
+  text-align: center;
+}
+
+.placeholder {
+  font-size: 11px;
+  line-height: 1.7;
+  color: var(--fg-faint);
+  padding: 0 6px 8px;
+  border-left: 2px solid var(--line-dark);
+  margin-left: 6px;
+}
+
+.placeholder.small {
+  line-height: 1.9;
+}
+
+.stage {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-2);
+}
+
+/* main 板里的卡片用深色皮肤 */
+.stage .shell {
+  background: var(--bg-2);
+}
+
+.stage .crumbs {
+  background: var(--bg-3);
+  border-bottom: 1px solid var(--line-dark);
+}
+
+.stage .crumb {
+  color: var(--fg-soft);
+}
+
+.stage .crumb:hover:not(:disabled) {
+  background: rgba(74, 144, 217, 0.22);
+}
+
+.stage .crumb.current {
+  color: var(--fg);
+}
+
+.stage .body {
+  color: var(--fg-soft);
+}
+
+.stage .body-view {
+  color: var(--fg);
+}
+
+.stage .kids-slot {
+  background: var(--bg);
+}
+
+.stage .divider {
+  background: var(--bg);
+  border-top: 1px solid var(--line-dark);
+}
+
+.stage .divider::after {
+  background: var(--line-dark);
+}
+
+.stage .kids-stub {
+  background: var(--bg);
+  color: var(--fg-faint);
+}
+
+.stage .kids-blank {
+  border-color: var(--line-dark);
+  color: var(--fg-faint);
+}
+
+.stage .lane {
+  background: var(--bg-3);
+  border-color: var(--line-dark);
+}
+
+.stage .lane-head {
+  color: var(--fg-soft);
+  border-bottom-color: var(--line-dark);
+}
+
+.stage .compact {
+  background: #2b3038;
+  border-color: var(--line-dark);
+  color: var(--fg);
+}
+
+.stage .compact.is-floating {
+  background: #343026;
+}
+
+.stage .compact:hover {
+  border-color: rgba(74, 144, 217, 0.6);
+}
+
+.stage .badge {
+  background: rgba(255, 255, 255, 0.09);
+  color: var(--fg-soft);
+}
+
+.stage .md code {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.stage .md blockquote {
+  color: var(--fg-soft);
+}
+
+.stage .md-empty {
+  color: var(--fg-faint);
+}

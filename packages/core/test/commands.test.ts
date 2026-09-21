@@ -110,6 +110,16 @@ describe('card_create', () => {
     )
   })
 
+  it('新建的浮卡会错开位置，不会叠在一起', async () => {
+    const ids = [await createTask(null, '浮卡一'), await createTask(null, '浮卡二'), await createTask(null, '浮卡三')]
+    const keys = ids.map((id) => {
+      const win = ws.requireCard(id).window
+      return `${win?.x},${win?.y}`
+    })
+    expect(keys.every((k) => !k.startsWith('undefined'))).toBe(true)
+    expect(new Set(keys).size).toBe(3)
+  })
+
   it('发出的是 child_add，after 里带整张卡（同步端要能靠它还原）', async () => {
     const outcome = await ws.execute({ type: 'card_create', parent: todo, title: '带快照' })
     expect(outcome.events).toHaveLength(1)

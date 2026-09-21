@@ -1,5 +1,10 @@
 packages:
   - packages/*
 
+allowBuilds:
+  esbuild: set this to true or false
+
 onlyBuiltDependencies:
   - esbuild
+  # electron 的 postinstall 要去下载对应平台的二进制，pnpm 默认会拦下所有构建脚本
+  - electron

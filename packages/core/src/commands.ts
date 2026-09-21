@@ -117,6 +117,8 @@ export interface CommandHost {
   lookup: (id: string) => Card | undefined
   require(id: string, options?: { allowTrashed?: boolean }): Card
   nextCardId(): string
+  /** 桌面上现在有多少张浮卡。用来给新浮卡错开位置。 */
+  floatingCount(): number
   /** 设置顶层字段。value 为 undefined 表示清除该字段。 */
   setField(
     id: string,
@@ -396,7 +398,8 @@ function cmdCardCreate(
 
   const windowOps: WindowOp[] = []
   if (parent === null) {
-    if (card.window === undefined) card.window = defaultWindowState(0)
+    // 用「现在桌上有几张浮卡」当种子，新卡就不会和已有的完全叠在一起
+    if (card.window === undefined) card.window = defaultWindowState(host.floatingCount())
     windowOps.push({ op: 'open', cardId: id })
   }
 

@@ -8,22 +8,43 @@
 
 ## 现在有什么
 
-**阶段一（核心库 + MCP）已完成**，还没有界面。
+**阶段一（核心库 + MCP）和阶段二（Electron 最小 UI）已完成。**
 
 - `@kankanban/core` —— 卡片模型、`.kkb` 文件存储、树操作、事件日志、撤销重做。不依赖 Electron。
 - `@kankanban/mcp` —— 把 core 的命令层包成 17 个 MCP 工具，独立 stdio 入口。
+- `@kankanban/app` —— Electron 桌面端。每张浮卡是一个透明无边框窗口，main 板是应用外壳。
 
-179 个测试全绿。
+182 个测试全绿。
 
 ## 快速开始
 
 ```bash
 pnpm install
 
-# 跑测试和类型检查（179 个用例）
+# 跑测试和类型检查
 pnpm test
 pnpm typecheck
 ```
+
+### 起桌面端
+
+```bash
+cd packages/app
+pnpm start -- --workspace <工作区目录>
+```
+
+工作区目录里会生成 `.kkb/`。不传就取 `KKB_WORKSPACE`，再缺省取当前目录。
+
+**工作区锁是排他的**：同一时刻只能有一个客户端（app 或 MCP server）写同一个工作区。
+
+开发期有两个自查开关：
+
+| 环境变量 | 作用 |
+|---|---|
+| `KKB_VERIFY=1` | 把阶段二的验收标准逐条跑一遍并打印结果 |
+| `KKB_CAPTURE_AFTER=<毫秒>` | 把窗口内容降采样成**字符画**打到 stdout，同时存 PNG |
+
+字符画是给读不了图片的 AI 看的：布局在纯文本里也是可见的。
 
 ### 起一个 MCP server
 
