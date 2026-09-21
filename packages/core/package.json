@@ -1,0 +1,23 @@
+{
+  "name": "@kankanban/core",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "KankanBan 核心库：卡片模型、文件存储、树操作、事件日志。不依赖 Electron。",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run --pool=threads",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "yaml": "^2.9.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.2",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.1"
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "name": "@kankanban/mcp",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "KankanBan MCP 服务端：把 commands 层暴露成 MCP 工具。",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@kankanban/core": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "zod": "^4.6.5"
+  },
+  "scripts": {
+    "start": "node src/bin.ts",
+    "test": "vitest run --pool=threads",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.2",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.1"
+  }
+}

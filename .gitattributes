@@ -1,0 +1,20 @@
+# 仓库里一律 LF。
+# 卡片文件格式有逐字节的 golden test，行尾要是随平台漂移，那个测试就白做了。
+* text=auto eol=lf
+
+# 美术资产走二进制，别让 git 去猜（以后这些大概率还会切到 LFS）
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.psd binary
+*.aseprite binary
+*.blend binary
+*.fbx binary
+*.obj binary
+*.wav binary
+*.mp3 binary
+*.ogg binary
+*.zip binary

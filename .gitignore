@@ -1,0 +1,15 @@
+node_modules/
+dist/
+*.tsbuildinfo
+*.log
+.pnpm-store/
+
+# 临时工作区（冒烟测试之类）
+.tmp-*/
+
+# 工作区数据默认不进版本库（见 docs/开发文档.md §9）
+# 想给某个工作区放开，就在那个工作区的 .gitignore 里写 !.kkb/
+.kkb/
+
+.DS_Store
+Thumbs.db
