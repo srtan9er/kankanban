@@ -2,10 +2,12 @@ import { app, dialog, ipcMain } from 'electron'
 import path from 'node:path'
 import { toKkbError } from '@kankanban/core'
 import { CHANNELS } from '../shared/ipc.ts'
-import type { Command, ContextMenuRequest, WindowAction } from '../shared/ipc.ts'
+import type { Command, ContextMenuRequest, McpInfo, WindowAction } from '../shared/ipc.ts'
 import { createTray, destroyTray, showCardMenu } from './menu.ts'
 import { scheduleCapture } from './debug-capture.ts'
 import { runVerification } from './debug-verify.ts'
+import { startMcpHost } from './mcp-host.ts'
+import type { RunningHttpMcp } from '@kankanban/mcp'
 import { WorkspaceService } from './service.ts'
 import { WindowManager } from './windows.ts'
 
@@ -68,12 +70,38 @@ app.whenReady().then(async () => {
     },
   }
 
+  // ---------------------------------------------------------------- MCP 端点
+  /*
+   * 把 MCP 端点挂在这个进程里。
+   *
+   * 以前 app 和 MCP server 是两个进程抢一个工作区，只能靠排他锁互斥。
+   * 现在 AI 的写入走的是同一个 WorkspaceService —— 落盘、广播、窗口更新，
+   * 和人自己拖一张卡走的是同一条路。
+   */
+  let mcp: RunningHttpMcp | null = null
+  let mcpError: string | null = null
+  try {
+    mcp = await startMcpHost(service, {
+      log: (message: string) => process.stdout.write(`${message}\n`),
+    })
+  } catch (error) {
+    mcpError = error instanceof Error ? error.message : String(error)
+    process.stderr.write(`[kankanban-app] MCP 端点起不来：${mcpError}\n`)
+  }
+
   // ---------------------------------------------------------------- IPC
   ipcMain.handle(CHANNELS.boot, (event) => service.boot(event.sender.id))
   ipcMain.handle(CHANNELS.snapshot, () => service.snapshot())
   ipcMain.handle(CHANNELS.command, (_event, command: Command) => service.run(command))
   ipcMain.handle(CHANNELS.undo, () => service.undo())
   ipcMain.handle(CHANNELS.redo, () => service.redo())
+
+  ipcMain.handle(CHANNELS.mcpInfo, (): McpInfo => ({
+    running: mcp !== null,
+    url: mcp?.url ?? null,
+    port: mcp?.port ?? null,
+    error: mcpError,
+  }))
 
   ipcMain.handle(CHANNELS.contextMenu, (event, request: ContextMenuRequest) => {
     const window = windows.windowOf(event.sender.id)
@@ -107,7 +135,7 @@ app.whenReady().then(async () => {
 
   // 开发期自查：KKB_VERIFY=1 时把阶段二的验收标准逐条跑一遍
   if (process.env['KKB_VERIFY'] === '1') {
-    void runVerification(service, windows, () => void shutdown())
+    void runVerification(service, windows, () => void shutdown(), mcp?.url ?? null)
   }
 
   let closing = false
@@ -115,6 +143,7 @@ app.whenReady().then(async () => {
     if (closing) return
     closing = true
     destroyTray()
+    await mcp?.close().catch(() => undefined)
     await service.close().catch(() => undefined)
     windows.quit()
     app.exit(0)

@@ -14,6 +14,8 @@
   },
   "dependencies": {
     "@kankanban/core": "workspace:*",
+    "@kankanban/mcp": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "zustand": "^5.0.15"

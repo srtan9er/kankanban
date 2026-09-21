@@ -1,6 +1,14 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { CHANNELS } from '../shared/ipc.ts'
-import type { CommandReply, Command, ContextMenuRequest, KkbApi, Patch, WindowAction } from '../shared/ipc.ts'
+import type {
+  CommandReply,
+  Command,
+  ContextMenuRequest,
+  KkbApi,
+  McpInfo,
+  Patch,
+  WindowAction,
+} from '../shared/ipc.ts'
 
 /**
  * 渲染进程能碰到的东西全在这里，多一个都没有。
@@ -19,6 +27,7 @@ const api: KkbApi = {
   dragStart: () => ipcRenderer.send(CHANNELS.dragStart),
   dragEnd: () => ipcRenderer.send(CHANNELS.dragEnd),
   windowAction: (action: WindowAction) => ipcRenderer.invoke(CHANNELS.windowAction, action) as Promise<void>,
+  mcpInfo: () => ipcRenderer.invoke(CHANNELS.mcpInfo) as Promise<McpInfo>,
 
   onPatch: (listener: (patch: Patch) => void) => {
     const handler = (_event: unknown, patch: Patch): void => listener(patch)

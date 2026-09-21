@@ -13,6 +13,12 @@ importers:
       '@kankanban/core':
         specifier: workspace:*
         version: link:../core
+      '@kankanban/mcp':
+        specifier: workspace:*
+        version: link:../mcp
+      '@modelcontextprotocol/sdk':
+        specifier: ^1.30.0
+        version: 1.30.0(zod@4.6.5)
       react:
         specifier: ^19.3.0
         version: 19.3.0

@@ -1,4 +1,6 @@
 import { BrowserWindow } from 'electron'
+import { Client } from '@modelcontextprotocol/sdk/client/index.js'
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import type { WorkspaceService } from './service.ts'
 import type { WindowManager } from './windows.ts'
 
@@ -51,6 +53,7 @@ export async function runVerification(
   service: WorkspaceService,
   windows: WindowManager,
   quit?: () => void,
+  mcpUrl?: string | null,
 ): Promise<void> {
   const checks: Check[] = []
   const record = (name: string, ok: boolean, detail: string): void => {
@@ -151,6 +154,60 @@ export async function runVerification(
     outcomeTrash.ok && bGone && bStillInWorkspace,
     `窗口已关：${bGone}；工作区里还查得到：${bStillInWorkspace}`,
   )
+
+  // ---------------------------------------------------------------- 7. MCP over HTTP
+  /*
+   * 这一条是整个「把 MCP 搬进主进程」的验收点：
+   * 从外面走 HTTP 连进来的 AI 客户端改东西，人的窗口必须**立刻**跟着变。
+   * 不是「文件里改了」，是「渲染进程里的状态改了」——所以用 executeJavaScript 读。
+   */
+  if (mcpUrl === undefined || mcpUrl === null) {
+    record('7. MCP over HTTP', false, 'MCP 端点没起来，这一条跳过了')
+  } else {
+    const client = new Client({ name: 'kkb-self-verify', version: '0.0.1' })
+    try {
+      await client.connect(new StreamableHTTPClientTransport(new URL(mcpUrl)))
+
+      const asObject = (result: unknown): Record<string, unknown> => {
+        const content = (result as { content: Array<{ type: string; text?: string }> }).content
+        return JSON.parse(content[0]?.text ?? '{}') as Record<string, unknown>
+      }
+
+      const created = asObject(
+        await client.callTool({ name: 'card_create', arguments: { parent: null, title: '从 MCP 建出来的卡' } }),
+      )
+      const id = created['created'] as string
+      await sleep(1600)
+
+      const opened = windows.labeledWindows().find((w) => w.label === `card-${id}`)
+      const seenInWindow =
+        opened === undefined ? null : await titleInRenderer(opened.window, id)
+
+      record(
+        '7. MCP（HTTP）建浮卡 → 窗口自动开，并且渲染进程立刻看得见',
+        opened !== undefined && seenInWindow === '从 MCP 建出来的卡',
+        `窗口开了：${opened !== undefined}；窗口里读到的标题：${String(seenInWindow)}`,
+      )
+
+      // 再用 MCP 改一次名字，确认广播这条路是活的
+      await client.callTool({
+        name: 'card_update',
+        arguments: { id, title: 'MCP 改过名字' },
+      })
+      await sleep(1200)
+      const renamed = opened === undefined ? null : await titleInRenderer(opened.window, id)
+
+      record(
+        '8. MCP 改标题 → 窗口里的渲染进程跟着变（写入确实走了广播那条路）',
+        renamed === 'MCP 改过名字',
+        `窗口里现在读到：${String(renamed)}`,
+      )
+    } catch (error) {
+      record('7. MCP over HTTP', false, `连不上或调用失败：${error instanceof Error ? error.message : String(error)}`)
+    } finally {
+      await client.close().catch(() => undefined)
+    }
+  }
 
   // ---------------------------------------------------------------- 报告
   const passed = checks.filter((c) => c.ok).length

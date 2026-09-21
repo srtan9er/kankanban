@@ -48,6 +48,27 @@ export class WorkspaceService {
     return this.workspace.meta.name
   }
 
+  /** MCP 工具要用它做只读查询。写入请走 run/undo/redo。 */
+  get raw(): Workspace {
+    return this.workspace
+  }
+
+  canUndo(): boolean {
+    return this.workspace.canUndo()
+  }
+
+  canRedo(): boolean {
+    return this.workspace.canRedo()
+  }
+
+  undoLabel(): string | null {
+    return this.workspace.undoLabel()
+  }
+
+  redoLabel(): string | null {
+    return this.workspace.redoLabel()
+  }
+
   // -------------------------------------------------------------------------
   // 命令
   // -------------------------------------------------------------------------
@@ -61,6 +82,8 @@ export class WorkspaceService {
         ...(outcome.created !== undefined ? { created: outcome.created } : {}),
         changed: outcome.changed,
         ...(outcome.warnings.length > 0 ? { warnings: outcome.warnings } : {}),
+        events: outcome.events,
+        windowOps: outcome.windowOps,
       }
     } catch (error) {
       const kkb = toKkbError(error)
@@ -70,16 +93,32 @@ export class WorkspaceService {
 
   async undo(): Promise<CommandReply> {
     const outcome = await this.workspace.undo()
-    if (outcome === null) return { ok: false, error: { code: 'NOTHING_TO_UNDO', message: '没有可撤销的操作。' } }
+    if (outcome === null) {
+      return { ok: false, error: { code: 'NOTHING_TO_UNDO', message: '没有可撤销的操作。' } }
+    }
     this.after(outcome)
-    return { ok: true, changed: outcome.changed }
+    return {
+      ok: true,
+      changed: outcome.changed,
+      ...(outcome.warnings.length > 0 ? { warnings: outcome.warnings } : {}),
+      events: outcome.events,
+      windowOps: outcome.windowOps,
+    }
   }
 
   async redo(): Promise<CommandReply> {
     const outcome = await this.workspace.redo()
-    if (outcome === null) return { ok: false, error: { code: 'NOTHING_TO_REDO', message: '没有可重做的操作。' } }
+    if (outcome === null) {
+      return { ok: false, error: { code: 'NOTHING_TO_REDO', message: '没有可重做的操作。' } }
+    }
     this.after(outcome)
-    return { ok: true, changed: outcome.changed }
+    return {
+      ok: true,
+      changed: outcome.changed,
+      ...(outcome.warnings.length > 0 ? { warnings: outcome.warnings } : {}),
+      events: outcome.events,
+      windowOps: outcome.windowOps,
+    }
   }
 
   // -------------------------------------------------------------------------

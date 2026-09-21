@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
+import type { McpInfo } from '../shared/ipc.ts'
 import { useAppStore } from './store.ts'
 import { CardShell } from './CardShell.tsx'
 import { allVisible, floatingCards, getCard, roots } from './selectors.ts'
@@ -28,6 +29,11 @@ export function MainBoard(): ReactNode {
   const notice = useAppStore((state) => state.notice)
 
   const [selected, setSelected] = useState('001')
+  const [mcp, setMcp] = useState<McpInfo | null>(null)
+
+  useEffect(() => {
+    void window.kkb.mcpInfo().then(setMcp)
+  }, [])
 
   const rootCards = roots(cards).filter((card) => card.id !== '000')
   const floaters = floatingCards(cards)
@@ -120,6 +126,26 @@ export function MainBoard(): ReactNode {
         <div className="rail-section">
           <div className="rail-label">设置</div>
           <div className="placeholder">快捷键等全局应用设置放这里（不是工作区设置）。</div>
+        </div>
+
+        <div className="rail-section">
+          <div className="rail-label">
+            AI 接入点
+            <span className="rail-count">{mcp?.running === true ? '运行中' : '未运行'}</span>
+          </div>
+          {mcp?.running === true && mcp.url !== null ? (
+            <div className="mcp-box">
+              <div className="mcp-url" title={mcp.url}>
+                {mcp.url}
+              </div>
+              <div className="mcp-hint">
+                AI 从这个地址连进来。它的写入和你自己拖卡走的是同一条路 ——
+                落盘、广播、窗口立刻更新。
+              </div>
+            </div>
+          ) : (
+            <div className="placeholder">{mcp?.error ?? '正在启动…'}</div>
+          )}
         </div>
         <div className="rail-section">
           <div className="rail-label">阶段状态</div>

@@ -745,6 +745,27 @@ button {
   line-height: 1.9;
 }
 
+.mcp-box {
+  margin: 0 8px 8px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--bg-3);
+  border-left: 2px solid var(--accent);
+}
+
+.mcp-url {
+  font: 11px/1.5 "Cascadia Mono", "Consolas", monospace;
+  color: #9ec6f0;
+  word-break: break-all;
+}
+
+.mcp-hint {
+  margin-top: 6px;
+  font-size: 10px;
+  line-height: 1.7;
+  color: var(--fg-faint);
+}
+
 .stage {
   flex: 1 1 auto;
   min-width: 0;

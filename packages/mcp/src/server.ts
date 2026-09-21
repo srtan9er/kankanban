@@ -1,13 +1,19 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
-import type { Workspace } from '@kankanban/core'
+import type { McpBackend } from './backend.ts'
 import { registerTools, SERVER_INSTRUCTIONS, SERVER_NAME, SERVER_VERSION } from './tools.ts'
 
-/** 一个工作区一个 server 实例。工具注册在 MCP server 上，但真正的操作层是 core 的 commands。 */
-export function createServer(workspace: Workspace): McpServer {
+/**
+ * 一个宿主一个 server 实例。
+ *
+ * 注意参数是 backend 而不是 Workspace：工具层不直接写数据，
+ * 写入要走宿主（app 里是 WorkspaceService，独立进程里是 Workspace 本身）。
+ * 这样在 app 里跑的时候，AI 的改动会广播到所有窗口。
+ */
+export function createMcpServer(backend: McpBackend): McpServer {
   const server = new McpServer(
     { name: SERVER_NAME, version: SERVER_VERSION },
     { instructions: SERVER_INSTRUCTIONS },
   )
-  registerTools(server, workspace)
+  registerTools(server, backend)
   return server
 }

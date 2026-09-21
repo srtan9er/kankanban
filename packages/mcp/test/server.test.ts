@@ -6,7 +6,7 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { Workspace } from '@kankanban/core'
-import { createServer, TOOL_NAMES } from '../src/index.ts'
+import { createStandaloneBackend, createMcpServer, TOOL_NAMES } from '../src/index.ts'
 
 /**
  * MCP 层的端到端测试：真的起一个 server、真的接一个 client，
@@ -65,7 +65,7 @@ async function firstColumnId(): Promise<string> {
 beforeEach(async () => {
   dir = await mkdtemp(path.join(tmpdir(), 'kkb-mcp-'))
   workspace = await Workspace.open({ dir })
-  server = createServer(workspace)
+  server = createMcpServer(createStandaloneBackend(workspace))
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
   client = new Client({ name: 'kankanban-test', version: '0.0.1' })
   await Promise.all([server.connect(serverTransport), client.connect(clientTransport)])

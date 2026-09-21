@@ -46,14 +46,30 @@ pnpm start -- --workspace <工作区目录>
 
 字符画是给读不了图片的 AI 看的：布局在纯文本里也是可见的。
 
-### 起一个 MCP server
+### 让 AI 接进来
+
+**推荐：开着 app，让 AI 连进来。** app 会在 `127.0.0.1:17381/mcp` 上跑一个 Streamable HTTP 的 MCP 端点
+（端口被占用会往后让，实际地址显示在 main 板的设置栏）。
+
+MCP 客户端这样配：
+
+```yaml
+serverName: kankanban
+transport: streamable-http
+url: http://127.0.0.1:17381/mcp
+failOnStartupError: false    # app 没开时退避重试，等你开起来
+```
+
+这样 **app 是唯一的写者**：AI 的写入和你自己拖卡走的是同一条路——落盘、广播、窗口立刻更新。
+人和 AI 看的是同一份数据，也不存在工作区锁冲突。
+
+**也可以只让 AI 用（不开 UI）**，走独立 stdio 进程：
 
 ```bash
 pnpm mcp /path/to/workspace
-# 等价于 node packages/mcp/src/bin.ts /path/to/workspace
 ```
 
-工作区目录里会生成 `.kkb/`（默认应该进 `.gitignore`）。不带参数时取 `KKB_WORKSPACE` 环境变量，再缺省取当前目录。
+注意这种模式下它和 app 是互斥的：同一个工作区同一时刻只能有一个写者。
 
 参数：
 

@@ -1,6 +1,7 @@
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { toKkbError, Workspace } from '@kankanban/core'
-import { createServer } from './server.ts'
+import { createStandaloneBackend } from './backend.ts'
+import { createMcpServer } from './server.ts'
 
 /**
  * 独立 stdio 入口。
@@ -69,7 +70,7 @@ async function main(): Promise<void> {
     `[kankanban] 工作区 ${workspace.paths.root}（${workspace.allCards().length} 张卡，lastSeq=${workspace.lastSeq()}）\n`,
   )
 
-  const server = createServer(workspace)
+  const server = createMcpServer(createStandaloneBackend(workspace))
   await server.connect(new StdioServerTransport())
 
   let closing = false

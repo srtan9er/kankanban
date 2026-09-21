@@ -1,4 +1,4 @@
-import type { Card, Command } from '@kankanban/core'
+import type { Card, Command, KkbEvent, WindowOp } from '@kankanban/core'
 
 export type { Card, Command }
 
@@ -29,6 +29,8 @@ export const CHANNELS = {
   dragEnd: 'kkb:drag-end',
   /** 关窗 / 最小化 / 切换置顶 */
   windowAction: 'kkb:window-action',
+  /** MCP 端点信息（给界面显示用） */
+  mcpInfo: 'kkb:mcp-info',
 } as const
 
 export type Target = { kind: 'main' } | { kind: 'card'; cardId: string }
@@ -74,6 +76,9 @@ export interface CommandReply {
   created?: string
   changed?: string[]
   warnings?: string[]
+  /** 这次执行产生的事件。MCP 工具要把摘要回给 AI，所以一并带上。 */
+  events?: KkbEvent[]
+  windowOps?: WindowOp[]
   error?: KkbErrorPayload
 }
 
@@ -84,6 +89,14 @@ export interface ContextMenuRequest {
 }
 
 export type WindowAction = 'close' | 'minimize' | 'toggle-always-on-top'
+
+/** MCP 端点状态。界面拿它显示「AI 从哪连进来」。 */
+export interface McpInfo {
+  running: boolean
+  url: string | null
+  port: number | null
+  error: string | null
+}
 
 /** preload 通过 contextBridge 暴露给渲染进程的 API。 */
 export interface KkbApi {
@@ -96,6 +109,7 @@ export interface KkbApi {
   dragStart(): void
   dragEnd(): void
   windowAction(action: WindowAction): Promise<void>
+  mcpInfo(): Promise<McpInfo>
   onPatch(listener: (patch: Patch) => void): () => void
 }
 

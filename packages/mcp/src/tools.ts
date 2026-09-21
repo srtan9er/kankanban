@@ -10,9 +10,9 @@ import {
   trashedCards,
   treeView,
   workspaceInfo,
-  Workspace,
 } from '@kankanban/core'
 import type { Card, Command, KkbEvent, Layout, ViewMode } from '@kankanban/core'
+import type { McpBackend } from './backend.ts'
 
 /**
  * 阶段一的 MCP 工具。
@@ -112,7 +112,16 @@ function cardPatchFromArgs(args: {
   return patch
 }
 
-export function registerTools(server: McpServer, workspace: Workspace): void {
+export function registerTools(server: McpServer, backend: McpBackend): void {
+  /*
+   * 只读查询直接用内存里的树；写入一律走 backend。
+   *
+   * 在 app 里跑的时候 backend 是 WorkspaceService —— 也就是说 AI 改的每一样东西
+   * 都会广播到所有窗口，人立刻看得见。如果这里直接调 workspace.execute，
+   * 就会变成「AI 说改了、人的屏幕上没变」的两套世界。
+   */
+  const workspace = backend.workspace
+
   // -------------------------------------------------------------------------
   // 读取
   // -------------------------------------------------------------------------
@@ -319,7 +328,7 @@ export function registerTools(server: McpServer, workspace: Workspace): void {
           ...(args.tags !== undefined ? { tags: args.tags } : {}),
           ...(args.index !== undefined ? { index: args.index } : {}),
         }
-        const outcome = await workspace.execute(command)
+        const outcome = await backend.run(command)
         const created = outcome.created as string
         return text({
           ok: true,
@@ -356,7 +365,7 @@ export function registerTools(server: McpServer, workspace: Workspace): void {
         if (Object.keys(patch).length === 0) {
           return text({ ok: true, changed: [], note: '没有传任何要改的字段，什么都没做。' })
         }
-        const outcome = await workspace.execute({
+        const outcome = await backend.run({
           type: 'card_update',
           id: args.id,
           patch: patch as never,
@@ -395,7 +404,7 @@ export function registerTools(server: McpServer, workspace: Workspace): void {
           ...(args.index !== undefined ? { index: args.index } : {}),
           ...(args.layout !== undefined ? { layout: args.layout as Layout } : {}),
         }
-        const outcome = await workspace.execute(command)
+        const outcome = await backend.run(command)
         return text({
           ok: true,
           card: toCardView(workspace.requireCard(args.id)),
@@ -420,7 +429,7 @@ export function registerTools(server: McpServer, workspace: Workspace): void {
     },
     (args) =>
       guard(async () => {
-        const outcome = await workspace.execute({
+        const outcome = await backend.run({
           type: 'children_reorder',
           parent: args.parent,
           order: args.order,
@@ -447,7 +456,7 @@ export function registerTools(server: McpServer, workspace: Workspace): void {
     },
     (args) =>
       guard(async () => {
-        const outcome = await workspace.execute({
+        const outcome = await backend.run({
           type: 'children_layout',
           parent: args.parent,
           id: args.id,
@@ -470,7 +479,7 @@ export function registerTools(server: McpServer, workspace: Workspace): void {
     },
     (args) =>
       guard(async () => {
-        const outcome = await workspace.execute({ type: 'card_trash', id: args.id })
+        const outcome = await backend.run({ type: 'card_trash', id: args.id })
         return text({
           ok: true,
           ...(outcome.warnings.length > 0 ? { warnings: outcome.warnings } : {}),
@@ -493,7 +502,7 @@ export function registerTools(server: McpServer, workspace: Workspace): void {
     },
     (args) =>
       guard(async () => {
-        const outcome = await workspace.execute({ type: 'card_restore', id: args.id })
+        const outcome = await backend.run({ type: 'card_restore', id: args.id })
         return text({
           ok: true,
           card: toCardView(workspace.requireCard(args.id, { allowTrashed: true })),
@@ -514,9 +523,9 @@ export function registerTools(server: McpServer, workspace: Workspace): void {
     },
     () =>
       guard(async () => {
-        const label = workspace.undoLabel()
+        const label = backend.undoLabel()
         if (label === null) return text({ ok: false, note: '撤销栈是空的，没有可撤销的操作。' })
-        const outcome = await workspace.undo()
+        const outcome = await backend.undo()
         return text({
           ok: true,
           undid: label,
@@ -535,9 +544,9 @@ export function registerTools(server: McpServer, workspace: Workspace): void {
     },
     () =>
       guard(async () => {
-        const label = workspace.redoLabel()
+        const label = backend.redoLabel()
         if (label === null) return text({ ok: false, note: '没有可重做的操作。' })
-        const outcome = await workspace.redo()
+        const outcome = await backend.redo()
         return text({
           ok: true,
           redid: label,
