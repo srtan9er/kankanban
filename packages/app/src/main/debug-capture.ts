@@ -1,4 +1,4 @@
-import { app, BrowserWindow, desktopCapturer, screen } from 'electron'
+import { BrowserWindow, desktopCapturer, screen } from 'electron'
 import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
@@ -140,6 +140,7 @@ export async function captureDesktop(outDir: string): Promise<void> {
 export function scheduleCapture(
   collect: () => Array<{ label: string; window: BrowserWindow }>,
   outDir: string,
+  quit?: () => void,
 ): void {
   const delay = Number(process.env['KKB_CAPTURE_AFTER'] ?? 0)
   if (!Number.isFinite(delay) || delay <= 0) return
@@ -149,7 +150,9 @@ export function scheduleCapture(
       await captureWindows(collect(), outDir)
       if (process.env['KKB_CAPTURE_DESKTOP'] === '1') await captureDesktop(outDir)
       if (process.env['KKB_CAPTURE_EXIT'] === '1') {
-        app.exit(0)
+        // 走正常关闭流程，别用 app.exit —— 那样会跳过 before-quit，
+        // 工作区锁就留在磁盘上了
+        quit?.()
         return
       }
       process.stdout.write('\n[capture] 抓完一轮，应用继续跑着。\n')

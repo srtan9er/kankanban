@@ -1,10 +1,11 @@
 packages:
   - packages/*
 
+# pnpm 11 的写法（pnpm 10 叫 onlyBuiltDependencies，11 改成了 allowBuilds）。
+#
+# 这两个包的 postinstall 都得跑：electron 要下载对应平台的二进制，
+# esbuild 要装平台包。不显式表态的话 pnpm 会以 ERR_PNPM_IGNORED_BUILDS 结束，
+# 而且 exit 1 —— 连 pnpm start 之前的依赖检查都过不去。
 allowBuilds:
-  esbuild: set this to true or false
-
-onlyBuiltDependencies:
-  - esbuild
-  # electron 的 postinstall 要去下载对应平台的二进制，pnpm 默认会拦下所有构建脚本
-  - electron
+  esbuild: true
+  electron: true

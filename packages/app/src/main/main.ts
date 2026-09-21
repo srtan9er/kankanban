@@ -102,11 +102,12 @@ app.whenReady().then(async () => {
   scheduleCapture(
     () => windows.labeledWindows(),
     process.env['KKB_CAPTURE_OUT'] ?? path.join(process.cwd(), '.tmp-app-shot'),
+    () => void shutdown(),
   )
 
   // 开发期自查：KKB_VERIFY=1 时把阶段二的验收标准逐条跑一遍
   if (process.env['KKB_VERIFY'] === '1') {
-    void runVerification(service, windows)
+    void runVerification(service, windows, () => void shutdown())
   }
 
   let closing = false

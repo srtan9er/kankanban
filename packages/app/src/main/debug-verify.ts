@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from 'electron'
+import { BrowserWindow } from 'electron'
 import type { WorkspaceService } from './service.ts'
 import type { WindowManager } from './windows.ts'
 
@@ -47,7 +47,11 @@ async function cardCountInRenderer(window: BrowserWindow): Promise<number | stri
   }
 }
 
-export async function runVerification(service: WorkspaceService, windows: WindowManager): Promise<void> {
+export async function runVerification(
+  service: WorkspaceService,
+  windows: WindowManager,
+  quit?: () => void,
+): Promise<void> {
   const checks: Check[] = []
   const record = (name: string, ok: boolean, detail: string): void => {
     checks.push({ name, ok, detail })
@@ -156,7 +160,10 @@ export async function runVerification(service: WorkspaceService, windows: Window
   }
   process.stdout.write(`\n  ${passed}/${checks.length} 条通过\n===END===\n`)
 
-  if (process.env['KKB_VERIFY_EXIT'] === '1') app.exit(passed === checks.length ? 0 : 1)
+  if (process.env['KKB_VERIFY_EXIT'] === '1') {
+    // 走正常关闭流程，保证工作区锁被释放
+    quit?.()
+  }
 }
 
 /** 小助手：把一段可能抛异常的异步读取包起来。 */
