@@ -46,6 +46,7 @@ export const DEFAULT_CARD_RADIUS = 10;
 export const MAX_CARD_RADIUS = 40;
 
 export type ViewState = {
+  tutorialCardId?:string;
   skin?: SkinId;
   cardRadius?: number;
   canvasSwapButtons?: boolean;
@@ -199,6 +200,7 @@ export function isWindowOpen(view: ViewState, windowId: CardId): boolean {
 
 /** 磁盘上的形状 —— 用宽松类型读，因为要容忍**旧版本**的文件。 */
 type StoredViewState = {
+  tutorialCardId?:unknown;
   skin?: unknown;
   cardRadius?: number;
   canvasSwapButtons?: boolean;
@@ -233,6 +235,7 @@ export function readViewState(root: string, ops: FsOps = defaultFsOps()): ViewSt
 
   return {
     version: 2,
+    ...(typeof parsed.tutorialCardId==='string'?{tutorialCardId:parsed.tutorialCardId}:{}),
     skin:isSkin(parsed.skin)?parsed.skin:'light',
     canvasSwapButtons: parsed.canvasSwapButtons !== false,
     ...(parsed.canvasDragBindings && validCanvasBindings(parsed.canvasDragBindings)?{canvasDragBindings:parsed.canvasDragBindings}:{}),

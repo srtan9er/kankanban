@@ -29,13 +29,14 @@ export async function connectDesktop(c: WorkspaceController, label: string) {
   let errorHandler = (message: string): void => { c.error = message; c.accept(c.snapshot()); };
   const request = async (action: Request | null): Promise<{ createdId?: string }> => {
     if (main) {
-      if (action && (action.kind === 'close-all' || action.kind === 'float' || action.kind === 'move' || action.kind === 'canvas-drop' || action.kind === 'delete' || action.kind === 'prefab-sync' || action.kind === 'undo' || action.kind === 'window')) await prepareWindows();
+      if (action && (action.kind === 'tutorial' || action.kind === 'close-all' || action.kind === 'float' || action.kind === 'move' || action.kind === 'canvas-drop' || action.kind === 'delete' || action.kind === 'prefab-sync' || action.kind === 'undo' || action.kind === 'window')) await prepareWindows();
       if (action === null) await c.flush();
       const result = action === null ? {} : await c.execute(action);
       await emit(`${CHANNEL}:snapshot`, c.snapshot());
       const roots = new Set(windowCards(c.session.state));
       const errors = await syncCardWindows(c.view.openWindows.filter(id => id !== '000' && roots.has(id)));
       if (errors.length) errorHandler(errors.join('；'));
+      if(action?.kind==='tutorial' && result.createdId)await invoke('open_card_window',{cardId:result.createdId});
       if(action?.kind==='window' && action.open)await invoke('open_card_window',{cardId:action.id});
       return result;
     }
@@ -82,6 +83,10 @@ export async function connectDesktop(c: WorkspaceController, label: string) {
       if (reply.error) waiting.reject(new Error(reply.error)); else waiting.resolve(reply.result ?? {});
     }));
     await request(null);
+    if(c.view.tutorialCardId===label.slice(5)){
+      const preferences=await invoke<unknown>('window_preferences');
+      if(!preferences)await invoke('resize_note',{width:760,height:660,finish:true});
+    }
   }
 
   const flushEditor = async (): Promise<void> => {

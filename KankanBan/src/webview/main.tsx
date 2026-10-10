@@ -59,11 +59,13 @@ async function boot(): Promise<void> {
     backend = toAsync(disk.ops);
     await hydrate(buffer.memory, backend, `${root}/.kkb`);
   }
+  const newWorkspace=!mirror && !buffer.ops.exists(`${root}/.kkb/tree.json`) && !buffer.ops.exists(`${root}/.kkb/events.jsonl`);
   const session = openSession(root, { ops: mirror ? createMemoryFs().ops : buffer.ops, clientId: 'ui', builtins: !mirror });
   const controller = new WorkspaceController(session, readViewState(root, buffer.ops), buffer, backend);
   if (!mirror) {
     normalizeBoards(session);
-    await controller.flush();
+    if(newWorkspace)await controller.execute({kind:'tutorial'});
+    else await controller.flush();
   }
   document.documentElement.dataset.theme=controller.view.skin ?? 'light';
   controller.subscribe(()=>{document.documentElement.dataset.theme=controller.view.skin ?? 'light';});

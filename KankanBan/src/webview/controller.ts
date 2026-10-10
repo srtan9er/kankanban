@@ -1,3 +1,4 @@
+import {ensureTutorial} from '../core/tutorial.ts';
 import {isSkin,type SkinId} from '../core/skins.ts';
 import {locateEntry,isInSubtree} from '../core/indexes.ts';
 import {uiText} from '../i18n/text.ts';
@@ -11,7 +12,7 @@ import { windowCards } from '../core/windows.ts';
 import type { BufferedFs } from '../platform/buffered-fs-ops.ts';
 import type { AsyncFsOps } from '../platform/async-fs-ops.ts';
 
-export type Request = Action | {kind:'skin';skin:SkinId} | {kind:'interaction';canvasDragBindings:CanvasDragBindings} | { kind: 'appearance'; cardRadius: number } | { kind: 'window'; id: string; open: boolean } | { kind: 'close-all' } | { kind: 'float'; id: string }
+export type Request = Action | {kind:'tutorial'} | {kind:'skin';skin:SkinId} | {kind:'interaction';canvasDragBindings:CanvasDragBindings} | { kind: 'appearance'; cardRadius: number } | { kind: 'window'; id: string; open: boolean } | { kind: 'close-all' } | { kind: 'float'; id: string }
   | { kind: 'view'; id: string; focus?: string; contentHeight?: number; childArea?: { width: number; height: number } };
 export type Snapshot = { cards: [string, Session['state']['cards'] extends Map<string, infer V> ? V : never][];
   children: [string, Session['state']['children'] extends Map<string, infer V> ? V : never][];
@@ -50,7 +51,11 @@ export class WorkspaceController {
       await this.buffer.flushTo(this.backend);
       this.busy = true; this.error = ''; this.status = uiText("webview/controller.text002"); this.changed();
       let result: { createdId?: string } = {};
-      if(request.kind==='skin') {
+      if(request.kind==='tutorial'){
+        const id=ensureTutorial(this.session,this.view.tutorialCardId);
+        this.view={...openWindow(this.view,id),tutorialCardId:id,windows:{...this.view.windows,[id]:{...windowViewFor(this.view,id),focusId:id,childArea:this.view.windows[id]?.childArea ?? {width:240,height:140}}}};
+        result={createdId:id};
+      } else if(request.kind==='skin') {
         if(!isSkin(request.skin))throw new Error(uiText('webview/controller.invalidSkin'));
         this.view={...this.view,skin:request.skin};
       } else if(request.kind==='interaction') {

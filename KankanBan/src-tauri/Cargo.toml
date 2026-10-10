@@ -1,6 +1,6 @@
 [package]
 name = "kankanban"
-version = "0.1.0"
+version = "0.0.0+1"
 description = "以卡片为唯一原语的项目管理工具"
 edition = "2021"
 rust-version = "1.77"
