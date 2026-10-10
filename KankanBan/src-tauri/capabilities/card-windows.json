@@ -1,0 +1,12 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "card-windows",
+  "description": "被「提出到屏幕窗口」的卡片窗口（card-{id}）。它们是**只读镜像**：不发写命令，只把用户意图 emit 给 main，然后按 main 的广播重载。start-dragging 是因为窗口无边框，只能靠 data-tauri-drag-region 拖动。",
+  "windows": ["card-*"],
+  "permissions": [
+    "core:default",
+    "core:event:allow-emit",
+    "core:event:allow-listen",
+    "core:window:allow-start-dragging"
+  ]
+}

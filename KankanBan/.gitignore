@@ -1,0 +1,16 @@
+# 依赖与产物
+node_modules/
+dist/
+src-tauri/target/
+src-tauri/gen/
+
+# 图标生成的中间产物
+icon-source.png
+
+# 本地工作区（真机运行时建在应用数据目录，这里只是防手滑）
+.kkb/
+
+# 编辑器
+.vscode/
+.idea/
+*.log

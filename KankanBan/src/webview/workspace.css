@@ -1,0 +1,479 @@
+:root{font-family:Inter,"Segoe UI","Microsoft YaHei",sans-serif;color:var(--palette-card-shade-80);background:var(--palette-handle-tint-90);font-size:14px;font-synthesis:none;--surface:var(--palette-background);--canvas:var(--palette-handle-tint-90);--sidebar:var(--palette-text-tint-90);--text:var(--palette-card-shade-80);--muted:var(--palette-handle-tint-10);--line:var(--palette-handle-tint-80);--accent:var(--palette-handle-shade-40);--accent-soft:var(--palette-handle-tint-80);--hover:var(--palette-text-tint-90);--shadow:0 8px 32px var(--palette-handle-shade-70-alpha-5);color-scheme:light}
+:root[data-theme=dark]{--surface:var(--palette-handle-shade-70);--canvas:var(--palette-handle-shade-80);--sidebar:var(--palette-handle-shade-70);--text:var(--palette-handle-tint-80);--muted:var(--palette-handle-tint-20);--line:var(--palette-handle-shade-50);--accent:var(--palette-handle-tint-30);--accent-soft:var(--palette-handle-shade-50);--hover:var(--palette-handle-shade-60);--shadow:0 8px 32px var(--palette-handle-shade-100-alpha-13);color-scheme:dark}
+*{box-sizing:border-box}body{margin:0;color:var(--text);background:var(--canvas)}html,body,#root{height:100%;overflow:hidden}button,input,textarea,select{font:inherit}button{cursor:pointer;color:inherit;border:0;background:none}button:disabled{opacity:.4;cursor:default}button:focus-visible,input:focus-visible,textarea:focus-visible,article:focus-visible{outline:2px solid var(--accent);outline-offset:3px}button,input,textarea{transition:background .12s,border-color .12s}input,textarea{color:var(--text);background:var(--surface)}.workspace-app{display:flex;height:100%;min-width:300px;background:var(--canvas)}.sidebar{width:232px;flex-shrink:0;padding:30px 18px 16px;background:var(--sidebar);border-right:1px solid var(--line);display:flex;flex-direction:column}.brand{display:flex;gap:10px;align-items:center;padding:0 12px 26px}.brand strong{font-size:23px;letter-spacing:-1px}.brand small{font-size:10px;letter-spacing:1px;color:var(--muted);align-self:end;margin-bottom:5px}.brand-mark{background:var(--accent);color:var(--surface);border-radius:9px;padding:3px 7px;transform:rotate(-8deg);font-size:22px}.workspace-label{display:flex;gap:12px;padding:16px 12px;border-top:1px solid var(--line);border-bottom:1px solid var(--line);font-size:13px;font-weight:600;align-items:center}.workspace-label small{display:block;color:var(--muted);font-size:11px;margin-top:4px;font-weight:400}.workspace-avatar{width:32px;height:32px;display:grid;place-items:center;background:var(--surface);border:1px solid var(--line);border-radius:9px;color:var(--accent)}.sidebar-section{font-size:10px;letter-spacing:1.4px;color:var(--muted);margin:29px 12px 10px}.nav-item{display:flex;align-items:center;gap:11px;width:100%;padding:11px 12px;text-align:left;border-radius:7px;font-size:13px;margin:2px 0}.nav-item>span:first-child{font-size:16px;width:18px;color:var(--muted)}.nav-item small{margin-left:auto;font-size:10px;color:var(--muted)}.nav-item:hover,.icon-button:hover{background:var(--hover)}.nav-item.active{background:var(--accent-soft);color:var(--accent);font-weight:600}.nav-item.active>span:first-child{color:var(--accent)}.desktop-label{display:flex;align-items:center;justify-content:space-between}.desktop-list{overflow:auto;flex:1;min-height:80px}.desktop-row{display:flex;align-items:center}.desktop-row .nav-item{min-width:0}.truncate{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.sidebar-empty{color:var(--muted);font-size:12px;line-height:1.9;padding:8px 12px}.sidebar-bottom{border-top:1px solid var(--line);padding-top:12px}.workspace-main{display:flex;flex-direction:column;min-width:0;flex:1;position:relative}.topbar{height:64px;display:flex;align-items:center;padding:0 34px;gap:10px;border-bottom:1px solid var(--line);flex-shrink:0;background:var(--surface)}.breadcrumbs{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.breadcrumbs button{padding:6px 3px;font-size:11px}.breadcrumbs button:hover{color:var(--accent)}.window-drag-space{flex:1;align-self:stretch;min-width:20px}.local-badge{font-size:10px;color:var(--muted);white-space:nowrap;display:flex;align-items:center;gap:7px}.local-badge i,.status-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--palette-handle-tint-10)}.page-heading{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:34px 34px 24px}.eyebrow{font-size:9px;letter-spacing:2px;color:var(--muted);font-weight:600}.page-heading h1{font-size:29px;font-weight:600;letter-spacing:-.8px;margin:10px 0}.editable-title{padding:0;text-align:left;max-width:100%;overflow-wrap:anywhere}.page-heading p{font-size:12px;color:var(--muted);margin:0;line-height:1.7}.heading-actions{display:flex;gap:8px;flex-shrink:0}.primary-button,.secondary-button,.danger-button{padding:10px 16px;border-radius:7px;font-size:12px;font-weight:500;white-space:nowrap}.primary-button{background:var(--accent);color:var(--surface);box-shadow:0 2px 3px var(--palette-handle-shade-100-alpha-7)}.primary-button:hover{filter:brightness(1.08)}.secondary-button{background:var(--surface);border:1px solid var(--line)}.danger-button{background:var(--palette-danger-tint-10);color:var(--palette-background)}.view-toolbar{display:flex;align-items:center;justify-content:space-between;padding:0 34px 15px;border-bottom:1px solid var(--line);gap:10px}.view-label{display:flex;gap:10px;align-items:center;font-size:12px;color:var(--accent)}.count{font-size:10px;color:var(--muted);background:var(--hover);border-radius:4px;padding:2px 6px}.search-field{display:flex;align-items:center;gap:6px;color:var(--muted);border:1px solid var(--line);background:var(--surface);padding:6px 10px;border-radius:6px;width:190px}.search-field input{font-size:11px;border:0;outline:none;width:100%;background:transparent}.collection-region{flex:1;min-height:0;overflow:auto;padding:25px 34px}.kanban-columns{display:flex;align-items:stretch;gap:20px;min-height:100%;padding-bottom:12px}.kanban-column{width:270px;min-width:240px;flex:1;max-width:400px;display:flex;flex-direction:column}.column-heading{display:flex;align-items:center;gap:9px;height:34px;margin-bottom:12px}.column-heading>button:first-of-type{font-size:12px;font-weight:600;text-align:left}.column-heading>.icon-button{margin-left:auto}.column-dot{width:7px;height:7px;border-radius:50%;background:var(--palette-text-tint-60)}.kanban-column:nth-child(2) .column-dot{background:var(--palette-card-border-tint-40)}.kanban-column:nth-child(3) .column-dot{background:var(--palette-handle)}.column-cards{min-height:18px}.card-slot{position:relative}.task-card{background:var(--surface);border:1px solid var(--line);border-radius:9px;padding:13px 15px 11px;margin-bottom:12px;box-shadow:0 2px 2px var(--palette-handle-shade-70-alpha-2);cursor:default;transition:border-color .12s,box-shadow .12s;position:relative}.task-card:hover{border-color:var(--palette-handle-tint-40);box-shadow:var(--shadow)}.task-card.selected{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}.task-top{display:flex;align-items:center;gap:5px;height:19px}.drag-handle{cursor:grab;color:var(--muted);font-size:19px;padding:0 3px;margin-left:-5px;touch-action:none}.drag-handle:active{cursor:grabbing}.task-kind{font-size:9px;letter-spacing:.4px;color:var(--muted)}.card-more{margin-left:auto}.icon-button{border-radius:5px;min-width:25px;height:25px;display:inline-grid;place-items:center;padding:0 4px;font-size:17px;color:var(--muted)}.task-card h3{font-size:14px;font-weight:500;line-height:1.5;margin:10px 0;overflow-wrap:anywhere}.task-preview{font-size:11px;color:var(--muted);line-height:1.7;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}.task-bottom{border-top:1px solid var(--line);padding-top:10px;margin-top:16px;display:flex;justify-content:space-between;font-size:10px;color:var(--muted)}.add-card{font-size:11px;color:var(--muted);text-align:left;padding:10px 4px}.add-card:hover{color:var(--accent)}.new-column{width:110px;min-width:100px;align-self:start;font-size:11px;color:var(--muted);margin-top:10px}.insertion-zone{height:9px;position:absolute;top:-10px;left:0;right:0}.insertion-zone:hover,.native-drop-target.insertion-zone{background:var(--accent);border-radius:3px;height:3px}.native-drop-target:not(.insertion-zone){outline:2px dashed var(--accent);outline-offset:-3px;background-color:var(--accent-soft)}.grid-layout{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;align-items:start}.grid-layout .task-card{margin-bottom:0}.list-layout{max-width:850px}.new-card-tile{min-height:130px;border:1px dashed var(--line);border-radius:9px;display:flex;flex-direction:column;gap:10px;align-items:center;justify-content:center;color:var(--muted);font-size:11px}.new-card-tile span{font-size:22px}.new-card-tile:hover{background:var(--hover);color:var(--accent)}.document-region{padding:18px 34px;overflow:auto;min-height:0;flex-shrink:0;background:var(--surface)}.document-tools{display:flex;justify-content:space-between;color:var(--muted);font-size:10px;align-items:center;margin-bottom:10px}.text-button{font-size:11px;color:var(--accent);padding:4px}.empty-document{color:var(--muted);font-size:13px;padding:12px 0}.region-divider{height:7px;flex-shrink:0;cursor:row-resize;background:var(--line);border-top:2px solid var(--canvas);border-bottom:2px solid var(--canvas);touch-action:none}.markdown{font-size:13px;line-height:1.8;overflow-wrap:anywhere}.markdown p{margin:2px 0}.markdown h1{font-size:23px}.markdown h2{font-size:19px}.markdown h3{font-size:16px}.markdown pre{background:var(--canvas);padding:12px;overflow:auto;border-radius:6px}.markdown code{font-family:Consolas,monospace;font-size:12px;background:var(--hover);padding:2px 4px;border-radius:3px}.markdown blockquote{border-left:3px solid var(--line);padding-left:12px;margin-left:0;color:var(--muted)}.markdown a{color:var(--accent)}.md-list,.md-task{display:flex;gap:8px;align-items:baseline}.paragraph-gap{height:10px}.canvas-viewport{height:100%;overflow:auto;background-image:radial-gradient(var(--line) 1px,transparent 1px);background-size:20px 20px}.canvas-surface{position:relative}.canvas-card{position:absolute}.canvas-empty{position:absolute;top:40px;left:40px}.tab-strip{display:flex;border-bottom:1px solid var(--line);gap:8px;overflow:auto}.tab-strip button{padding:10px 15px;white-space:nowrap;border-bottom:2px solid transparent}.tab-strip button.active{border-color:var(--accent);color:var(--accent)}.tab-body{padding:20px 0}.tab-body>.markdown{margin:12px 0 24px}.workspace-footer{height:36px;flex-shrink:0;padding:0 24px;display:flex;align-items:center;justify-content:space-between;border-top:1px solid var(--line);background:var(--surface);font-size:10px;color:var(--muted);gap:12px}.workspace-footer>span{display:flex;gap:8px;align-items:center}.workspace-footer button{font-size:10px;margin-left:10px;color:var(--accent)}.status-dot.error{background:var(--palette-danger-tint-30)}.settings-page{padding:40px;overflow:auto;flex:1}.settings-page h1{font-size:27px;margin:12px 0 28px}.settings-card{padding:22px;margin:18px 0;background:var(--surface);border:1px solid var(--line);border-radius:10px;max-width:800px}.settings-card p{font-size:12px;line-height:1.8}.settings-card pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}.settings-card h3{margin:0 0 14px;font-size:15px}.segmented{display:flex;gap:8px}.segmented button{border:1px solid var(--line);padding:8px 24px;border-radius:6px}.segmented button.active{background:var(--accent-soft);color:var(--accent);border-color:var(--accent)}.muted{color:var(--muted)}.prefab{box-shadow:inset 0 0 0 1px var(--palette-accent-tint-30-alpha-40)}.instance{border-color:var(--palette-accent-tint-30);box-shadow:0 0 0 1px var(--palette-accent-tint-30-alpha-13)}.identity-badge{font-size:10px;border:1px solid var(--palette-accent-tint-30);padding:3px 7px;margin-left:12px;border-radius:5px;color:var(--palette-accent-shade-10);vertical-align:middle}.menu-backdrop{position:fixed;inset:0;z-index:20}.action-menu{position:fixed;z-index:21;width:222px;border:1px solid var(--line);border-radius:9px;background:var(--surface);box-shadow:0 14px 50px var(--palette-handle-shade-100-alpha-13);padding:7px;max-height:calc(100vh - 20px);overflow:auto}.action-menu>button{display:flex;justify-content:space-between;width:100%;padding:9px 11px;border-radius:5px;text-align:left;font-size:12px}.action-menu button:hover{background:var(--hover)}.menu-title{font-size:11px;color:var(--muted);padding:9px 10px;border-bottom:1px solid var(--line);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.menu-label{font-size:10px;color:var(--muted);padding:12px 10px 5px}.layout-choices{display:grid;grid-template-columns:repeat(3,1fr);gap:3px;padding:5px}.layout-choices button{font-size:11px;padding:7px 4px;border-radius:4px}.layout-choices button.active{background:var(--accent-soft);color:var(--accent)}.danger{color:var(--palette-danger-tint-20)!important}.modal-backdrop{position:fixed;inset:0;z-index:30;background:var(--palette-handle-shade-80-alpha-33);display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(3px)}.edit-dialog{background:var(--surface);border:1px solid var(--line);border-radius:12px;width:460px;max-width:100%;padding:25px;box-shadow:0 20px 80px var(--palette-handle-shade-100-alpha-20)}.edit-dialog.wide{width:740px}.dialog-heading{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}.edit-dialog h2{font-size:19px;margin:0}.edit-dialog>p{line-height:1.8;color:var(--muted);font-size:13px}.edit-dialog input,.edit-dialog textarea{width:100%;padding:12px;border:1px solid var(--line);border-radius:6px;outline-color:var(--accent)}.edit-dialog textarea{height:min(50vh,420px);resize:vertical;font:13px/1.8 Consolas,monospace}.dialog-actions{display:flex;gap:8px;justify-content:flex-end;align-items:center;margin-top:22px}.dialog-actions>span{margin-right:auto;font-size:10px}.error-banner{padding:12px 24px;background:var(--palette-danger-tint-90);color:var(--palette-danger-shade-10);display:flex;gap:12px;align-items:center;font-size:12px}.error-banner span{flex:1}.error-banner button{border:1px solid var(--palette-danger-tint-60);border-radius:4px;padding:4px 8px}.empty-state{padding:40px;text-align:center;color:var(--muted)}.empty-state>span{font-size:35px;color:var(--accent)}.empty-state h3{font-size:14px;font-weight:400;margin-bottom:22px}.floating-app .topbar{padding:0 16px;height:42px}.floating-app .page-heading{padding:20px}.floating-app .page-heading h1{font-size:22px}.floating-app .heading-actions{flex-wrap:wrap}.floating-app .view-toolbar{padding:0 20px 12px}.floating-app .collection-region{padding:18px}.floating-app .workspace-footer{padding:0 12px}.floating-app .workspace-footer>span:last-child{font-size:0}.floating-app .document-region{padding:14px 20px}.native-drag-ghost{position:fixed;pointer-events:none;z-index:100;border:1px solid var(--accent);background:var(--surface);padding:10px 16px;border-radius:7px;box-shadow:var(--shadow);font-size:12px;color:var(--accent)}
+@media(max-width:900px){.sidebar{width:194px;padding:20px 12px}.brand{padding-left:8px}.brand small{display:none}.topbar{padding:0 22px}.page-heading{padding:26px 22px 20px}.view-toolbar{padding-left:22px;padding-right:22px}.collection-region{padding:22px}.page-heading h1{font-size:25px}.kanban-column{min-width:230px}.workspace-footer>span:last-child{font-size:0}}@media(max-width:620px){.sidebar{width:60px;padding:18px 6px}.brand{padding:0 7px 25px}.brand strong,.workspace-label,.sidebar-section,.desktop-list,.nav-item small,.brand small{display:none}.sidebar .nav-item{font-size:0;justify-content:center;padding:12px 6px;gap:0}.sidebar .nav-item>span:first-child{font-size:20px}.sidebar-bottom{margin-top:auto}.page-heading{align-items:flex-start}.page-heading p{max-width:230px}.heading-actions{flex-direction:column}.search-field{width:135px}.local-badge{display:none}.topbar{height:45px}.page-heading h1{font-size:22px}.primary-button,.secondary-button{padding:9px 11px}.view-toolbar{padding-left:18px;padding-right:18px}.collection-region{padding:18px}.document-region{padding:15px 18px}.settings-page{padding:22px}.workspace-footer{padding:0 12px}}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+/* First iteration follows sticky-tauri: neutral manager and yellow notes. */
+:root{--surface:var(--palette-background);--canvas:var(--palette-card-tint-90);--sidebar:var(--palette-card-tint-90);--text:var(--palette-handle-shade-60);--muted:var(--palette-text-tint-40);--line:var(--palette-handle-tint-80);--accent:var(--palette-accent);--accent-soft:var(--palette-accent-tint-90);--hover:var(--palette-accent-tint-90);font-family:-apple-system,'Segoe UI','Microsoft YaHei',sans-serif}
+.manager-navigation{display:flex;align-items:center;gap:25px;padding:18px 22px;background:var(--canvas);border-bottom:1px solid var(--line);flex-shrink:0}.manager-navigation strong{font-size:17px;white-space:nowrap;font-weight:600}.manager-tabs{display:flex;gap:4px;overflow:auto}.manager-tabs button{padding:7px 12px;border:1px solid transparent;border-radius:6px;white-space:nowrap;font-size:12px}.manager-tabs button.active{background:var(--surface);border-color:var(--palette-text-tint-80)}.manager-home{padding:22px;flex:1;overflow:auto}.proto-manager .manager-home .notes{max-height:none}.manager-home .note-title{text-align:left;padding:7px 0!important;background:none!important;border:0!important}.proto-manager .topbar{height:38px;background:var(--canvas);padding:0 22px}.proto-manager .page-heading{padding:20px 22px}.proto-manager .page-heading h1{font-size:20px;margin:3px 0 8px}.proto-manager .eyebrow{display:none}.proto-manager .task-card{background:var(--palette-card);color:var(--palette-text);border-color:var(--palette-card-shade-10);box-shadow:none;border-radius:8px}.proto-manager .task-kind,.proto-manager .task-preview,.proto-manager .task-bottom{color:var(--palette-text-tint-20)}.proto-manager .task-bottom{border-color:var(--palette-card-border-tint-60)}.proto-manager .task-card.selected{border-color:var(--palette-danger-tint-30);box-shadow:inset 0 0 0 2px var(--palette-danger-tint-30-alpha-25)}.floating-app{background:transparent}.floating-app .workspace-main{background:transparent}.floating-app .topbar,.floating-app .workspace-footer{display:none}.proto-note{height:100%;width:100%;min-height:0;color:var(--palette-text-shade-20);display:flex}.proto-note .card{cursor:default}.proto-note .note-title-row{position:relative;flex-shrink:0;height:36px}.proto-note .title{height:36px;padding-left:25px;padding-right:110px;cursor:text}.window-grip{position:absolute;left:5px;top:10px;z-index:2;color:var(--palette-card-shade-40);cursor:grab;touch-action:none;font-size:15px}.note-breadcrumb{padding:2px 12px 4px;display:flex;align-items:center;flex-wrap:wrap;gap:3px;font-size:10px;flex-shrink:0;color:var(--palette-text-tint-20)}.note-breadcrumb button{font-size:10px;padding:0;border:0;background:transparent;color:inherit}.note-tree-drag{margin-left:auto;cursor:grab!important;touch-action:none}.proto-note .body{min-height:35px;flex:1}.proto-note .preview .markdown{font-size:13px;line-height:1.6}.proto-note .preview .markdown h1{font-size:16px}.proto-note .preview .markdown h2{font-size:15px}.proto-note .content{outline:none}.proto-note .note-children{max-height:48%;min-height:65px;overflow:auto;border-top:1px solid var(--palette-card-border-tint-60);padding:8px 12px 16px;resize:vertical}.note-children-heading{display:flex;justify-content:space-between;align-items:center;font-size:10px;color:var(--palette-text-tint-20);margin-bottom:9px}.note-children-heading button{font-size:11px;padding:2px 4px;background:transparent;border:0}.proto-note .grid-layout{grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:7px}.proto-note .task-card{padding:8px;border-radius:6px;background:var(--palette-card-tint-50);color:var(--palette-text);border:1px solid var(--palette-card-border-tint-60)}.proto-note .task-card h3{font-size:12px;margin:6px 0}.proto-note .task-bottom{display:none}.proto-note .task-kind{font-size:9px}.proto-note .new-card-tile{min-height:75px;border-color:var(--palette-card-border-tint-60);font-size:10px}.proto-note .new-card-tile span{font-size:16px}.proto-note .kanban-column{min-width:175px}.proto-note .canvas-viewport{height:220px}.proto-note .canvas-card .task-card{background:var(--palette-card-tint-50)}.proto-note .error-banner{font-size:10px}.note-error{font-size:10px;color:var(--palette-danger);padding:5px 12px}.proto-note .task-card.selected{border-color:var(--palette-danger-tint-30);box-shadow:inset 0 0 0 2px var(--palette-danger-tint-30-alpha-19)}.proto-note .card.native-drop-target{border-color:var(--palette-danger-tint-30);box-shadow:inset 0 0 0 4px var(--palette-danger-tint-30-alpha-25)}.proto-note .modal-backdrop{background:var(--palette-text-shade-20-alpha-27)}.proto-manager .manager-home button{font-family:inherit}.proto-manager .manager-home .row-btn{padding:0}.proto-note .note-children .action-menu{font-size:12px}
+.workspace-main.proto-manager{padding:0}.floating-app .workspace-main.proto-manager{background:transparent}.proto-manager .manager-home .note-row{padding:4px 6px 4px 10px}.proto-manager .note-row .note-title{width:auto}.proto-note .title,.proto-note .content,.proto-note .preview{user-select:text}.proto-note .note-title-row .title{font-size:15px}.proto-note .card{height:100%}.proto-note .note-children .new-card-tile{padding:8px}.proto-note .preview .markdown p{margin:.45em 0}.proto-note .note-children .task-card .drag-handle{padding:0;min-width:18px;border:0;background:transparent}.proto-manager .manager-home .note-title{flex:1}.floating-app .workspace-main>.error-banner{position:absolute;top:38px;left:5px;right:5px;z-index:10}.floating-app .task-card .icon-button{border:0;background:transparent;padding:0;width:22px;height:22px}
+/* A board has one bounded scroll viewport per column. */
+.board-workspace .workspace-main { min-height: 0; overflow: hidden; }
+.board-workspace .page-heading, .board-workspace .view-toolbar { flex-shrink: 0; }
+.board-workspace .collection-region { display: flex; min-height: 0; overflow: hidden; }
+.proto-note.board-note { flex: 1; min-height: 0; }
+.proto-note.board-note .note-children {
+  display: flex; flex-direction: column; flex: 1; max-height: none;
+  min-height: 0; overflow: hidden; resize: none;
+}
+.board-note .note-children-heading { flex-shrink: 0; }
+.kanban-columns, .proto-note.board-note .kanban-columns {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: minmax(0, 1fr); align-items: stretch;
+  flex: 1; width: 100%; min-width: 0; min-height: 0;
+  overflow: hidden; padding-bottom: 0; gap: 16px;
+}
+.kanban-column, .proto-note.board-note .kanban-column {
+  display: flex; flex-direction: column; width: auto;
+  min-width: 0; max-width: none; min-height: 0; overflow: hidden;
+}
+.column-heading, .kanban-column > .add-card { flex-shrink: 0; }
+.column-heading > button:first-of-type {
+  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.column-heading .count, .column-heading .icon-button { flex-shrink: 0; }
+.column-cards {
+  flex: 1; min-width: 0; min-height: 0;
+  overflow-y: auto; overflow-x: hidden; overscroll-behavior-y: contain;
+  scrollbar-gutter: stable; padding: 10px 3px 0;
+}
+/* Card identity remains yellow; state and snap hints use inner accents only. */
+.proto-note > .card, .proto-manager .task-card, .proto-note .task-card, .task-card {
+  border: 2px solid var(--palette-card-border);
+}
+.proto-manager .task-card.selected, .proto-note .task-card.selected, .task-card.selected {
+  border-color: var(--palette-card-border); box-shadow: inset 0 0 0 2px var(--palette-danger-tint-30);
+}
+.proto-note > .card.merge-ready { border-color:var(--palette-card-border); box-shadow:inset 0 0 0 3px var(--palette-accent); }
+.proto-note .card.native-drop-target { border-color:var(--palette-card-border); }
+.proto-note .card::before, .proto-note .card::after { background:var(--palette-accent-shade-40); z-index:12; }
+.proto-note .card::before { top:2px; bottom:2px; }
+.proto-note .card::after { left:2px; right:2px; }
+.proto-note .card.snap-left::before { left:2px; right:auto; }
+.proto-note .card.snap-right::before { right:2px; left:auto; }
+.proto-note .card.snap-top::after { top:2px; bottom:auto; }
+.proto-note .card.snap-bottom::after { bottom:2px; top:auto; }
+.proto-note .note-title-row .title { padding-left:12px; }
+.card-regions { position:relative; display:flex; flex:1; min-height:0; min-width:0; overflow:hidden; }
+.horizontal-regions { flex-direction:column; }
+.vertical-regions { flex-direction:row; }
+.card-body-region { flex:1; min-height:0; min-width:0; overflow:auto; }
+.card-body-region > .body { height:100%; }
+.ordinary-document { padding:16px; }
+.child-region { position:relative; flex:none; align-self:flex-end; display:flex; flex-direction:column; min-height:0; min-width:0; overflow:hidden; border:0; background:var(--palette-card-tint-50); }
+.horizontal-regions > .child-region { max-height:calc(100% - 40px); border-top:1px solid var(--palette-card-border-tint-60); }
+.vertical-regions > .child-region { max-width:calc(100% - 40px); border-left:1px solid var(--palette-card-border-tint-60); }
+.child-region .note-children-heading { flex:none; padding:8px 12px 2px; margin:0; }
+.child-region .card-collection { flex:1; min-height:0; min-width:0; padding:14px 10px 44px; }
+.horizontal-card-list { display:flex; flex-wrap:nowrap; gap:10px; overflow-x:auto; overflow-y:hidden; }
+.horizontal-card-list > .card-slot { flex:0 0 190px; min-width:0; height:100%; overflow:hidden; }
+.horizontal-card-list .task-card { height:100%; min-height:70px; overflow:hidden; margin:0; }
+.horizontal-card-list .insertion-zone { top:0; bottom:0; height:auto; width:8px; left:-9px; right:auto; }
+.vertical-card-list { display:flex; flex-direction:column; gap:8px; overflow-y:auto; overflow-x:hidden; }
+.vertical-card-list > .card-slot { flex:none; min-width:0; }
+.vertical-card-list .task-card { margin:0; }
+.proto-manager button.child-region-resizer { position:absolute; top:0; left:0; z-index:5; width:16px; height:16px; padding:0; border:0; border-radius:0; background:transparent; cursor:default; touch-action:none; }
+.proto-manager button.floating-add-card { position:absolute; bottom:20px; right:22px; z-index:8; width:32px; height:32px; padding:0; border:2px solid var(--palette-card-border); border-radius:50%; background:var(--palette-card); color:var(--palette-text); font-size:22px; box-shadow:0 2px 5px var(--palette-handle-shade-100-alpha-13); }
+.restore-children { position:absolute; bottom:24px; right:65px; z-index:8; font-size:11px; }
+.proto-note .card, .task-card { cursor:grab; }
+.proto-note .card input, .proto-note .card textarea { cursor:text; }
+.child-region.child-region-collapsed{visibility:hidden;border:0}.card-body-region .preview{user-select:none}.native-drop-target.task-card{border-color:var(--palette-card-border);outline-color:var(--palette-accent)}.proto-manager .task-card:hover{border-color:var(--palette-card-border)}
+.workspace-main.card-detail{border:2px solid var(--palette-card-border)}.proto-manager .note-row{border:2px solid var(--palette-card-border);border-radius:5px;margin:4px}.proto-manager .note-row:last-child{border-bottom:2px solid var(--palette-card-border)}.proto-note .card:not(.merge-ready){border-color:var(--palette-card-border)}
+
+/* Card surfaces use the prototype's neutral cursor until a drag actually starts. */
+html, body, #root, #root * { cursor: default !important; }
+html.card-dragging, html.card-dragging body, html.card-dragging #root, html.card-dragging #root * { cursor: grabbing !important; user-select: none !important; }
+.horizontal-regions > .child-region { align-self: stretch; width: 100%; }
+.vertical-regions > .child-region { align-self: stretch; height: 100%; }
+button.child-region-resizer { background: transparent; border: 0; border-radius: 0; }
+.horizontal-regions > .child-region > .child-region-resizer { top: 0; left: 0; width: 100%; height: 6px; }
+.vertical-regions > .child-region > .child-region-resizer { top: 0; left: 0; width: 6px; height: 100%; }
+.note-row .note-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Overlay creation controls never participate in the child layout. */
+.collection-region, .kanban-column { position: relative; }
+.proto-manager .kanban-column > .floating-add-card { bottom: 10px; right: 10px; }
+.child-region .card-collection { padding: 14px 10px 4px; }
+.child-region .note-children-heading { height:28px; padding:8px 12px 2px; margin:0; }
+.horizontal-card-list .task-card { min-height:var(--child-card-min-height,112px); }
+.horizontal-regions > .child-region > .child-region-resizer { height:12px; }
+.vertical-regions > .child-region > .child-region-resizer { width:12px; }
+.child-region-resizer .resize-rails { position:absolute; pointer-events:none; border-top:1px solid var(--palette-card-border-tint-20); border-bottom:1px solid var(--palette-card-border-tint-20); height:5px; left:12px; right:12px; top:3px; }
+.vertical-regions .child-region-resizer .resize-rails { border:0; border-left:1px solid var(--palette-card-border-tint-20); border-right:1px solid var(--palette-card-border-tint-20); width:5px; height:auto; top:12px; bottom:12px; left:3px; right:auto; }
+#root button:not(:disabled), #root button:not(:disabled) * { cursor:pointer !important; }
+#root .horizontal-regions .child-region-resizer, #root .horizontal-regions .child-region-resizer * { cursor:ns-resize !important; }
+#root .vertical-regions .child-region-resizer, #root .vertical-regions .child-region-resizer * { cursor:ew-resize !important; }
+#root textarea.content { cursor:text !important; user-select:text; }
+html.card-dragging #root *, html.card-dragging #root button * { cursor:grabbing !important; }
+
+html.resizing-child-horizontal #root, html.resizing-child-horizontal #root * { cursor:ns-resize !important; user-select:none; }
+html.resizing-child-vertical #root, html.resizing-child-vertical #root * { cursor:ew-resize !important; user-select:none; }
+
+/* A shared, explicit editing state for title and body. */
+.proto-note .edit-mode-bar { display:flex; align-items:center; justify-content:space-between; gap:8px; flex:none; min-height:28px; padding:3px 12px; font-size:11px; color:var(--palette-card-shade-50); border-bottom:1px solid var(--palette-card-shade-10); }
+.proto-note .editing-mode .edit-mode-bar { color:var(--palette-accent-shade-40); background:var(--palette-accent-tint-90); border-color:var(--palette-accent-tint-40); font-weight:600; }
+.proto-note .editing-title .title, .proto-note .editing-content .content { background:var(--palette-background); box-shadow:inset 0 0 0 1px var(--palette-accent-tint-40); }
+.proto-note .editing-mode .title { padding-left:12px; }
+.proto-manager .edit-mode-bar .finish-edit { background:var(--palette-accent-shade-30); color:var(--palette-background); border:0; border-radius:4px; padding:4px 10px; font-size:11px; white-space:nowrap; }
+#root .editing-title .title { cursor:text !important; }
+.proto-note .edit-mode-bar .finish-edit:disabled { opacity:.6; }
+
+/* All layouts share the compact grid's card floor. */
+.task-card, .proto-note .task-card { min-width:var(--card-min-width); min-height:var(--card-min-height); }
+.grid-layout, .proto-note .grid-layout { grid-template-columns:repeat(auto-fill,minmax(var(--card-min-width),1fr)); }
+.horizontal-card-list > .card-slot { flex-basis:var(--card-min-width); min-width:var(--card-min-width); }
+.horizontal-card-list .task-card { min-height:var(--card-min-height); }
+.vertical-card-list > .card-slot { min-width:var(--card-min-width); }
+.kanban-columns, .proto-note.board-note .kanban-columns { grid-template-columns:repeat(3,minmax(var(--board-column-min-width),1fr)); gap:var(--board-gap); }
+.board-workspace .collection-region { padding-left:22px; padding-right:22px; }
+.board-workspace .sidebar { width:var(--board-sidebar-width); }
+.canvas-card { min-width:var(--card-min-width); min-height:var(--card-min-height); }
+
+.floating-app { min-width:0; }
+
+.board-workspace .page-heading > div:first-child { min-width:0; }
+.board-workspace .page-heading h1 { overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.board-workspace .page-heading .editable-title { overflow-wrap:normal; }
+
+/* Canvas is a clipped var(--palette-background) viewport; panning transforms only its coordinate surface. */
+.canvas-workspace .workspace-main { min-height:0; overflow:hidden; }
+.canvas-workspace .collection-region { display:flex; padding:0; overflow:hidden; background:var(--palette-background); }
+.proto-note.canvas-note { flex:1; min-height:0; }
+.proto-note.canvas-note .note-children { display:flex; flex-direction:column; flex:1; max-height:none; min-height:0; padding:0; overflow:hidden; resize:none; background:var(--palette-background); }
+.canvas-note .note-children-heading { flex:none; margin:0; padding:6px 12px; }
+.canvas-viewport, .proto-note .canvas-viewport { position:relative; flex:1; width:100%; height:100%; min-width:0; min-height:0; overflow:clip; background:var(--palette-background); background-image:none; touch-action:none; }
+.canvas-surface { position:absolute; inset:0; width:100%; height:100%; transform-origin:0 0; }
+html.canvas-panning #root, html.canvas-panning #root * { cursor:grabbing !important; user-select:none !important; }
+
+.action-menu .layout-menu > summary { padding:9px 12px; border-radius:5px; font-size:12px; }
+.action-menu .layout-menu > summary:hover { background:var(--hover); }
+#root .layout-menu > summary { cursor:pointer !important; }
+
+/* Keep the same drag handle visible at the edge when the child area is zero. */
+.child-region.child-region-collapsed { overflow:visible; }
+.child-region.child-region-collapsed > .child-region-resizer { visibility:visible; }
+.horizontal-regions > .child-region-collapsed > .child-region-resizer { top:-12px; bottom:auto; }
+.vertical-regions > .child-region-collapsed > .child-region-resizer { left:-12px; right:auto; }
+
+/* Keep content clipped and visible until the short collapse transition finishes. */
+.child-region.child-region-transition { visibility:visible; overflow:hidden; }
+.child-region.child-region-transition > .child-region-resizer { visibility:visible; }
+@media(prefers-reduced-motion:reduce) { .child-region { transition:none !important; } }
+
+.canvas-tile { position:absolute; }
+.canvas-card { overflow:hidden; }
+.canvas-card .task-card { height:100%; margin:0; overflow:hidden; }
+.canvas-moving-card { pointer-events:none; opacity:.85; }
+.canvas-error { position:absolute; left:12px; right:12px; bottom:12px; padding:8px; background:var(--palette-danger-tint-90); color:var(--palette-danger-shade-20); z-index:20; }
+
+.canvas-card > .card-slot{height:100%}
+.canvas-card .insertion-zone{display:none}
+
+#root .canvas-viewport > .floating-add-card{position:absolute;right:16px;bottom:16px;z-index:30}
+
+/* Card geometry and its clipped fill always share the same radius. */
+:root{--card-radius:10px}
+html[data-window-kind=card],html[data-window-kind=card] body,html[data-window-kind=card] #root{background:transparent}
+.proto-note > .card,.proto-manager .task-card,.proto-note .task-card,.task-card,
+.proto-manager .note-row,.workspace-main.card-detail,.settings-card,.new-card-tile{
+ border-radius:var(--card-radius);background-clip:padding-box;
+}
+.proto-note > .card{isolation:isolate;clip-path:inset(0 round var(--card-radius))}
+.canvas-card{border-radius:var(--card-radius)}
+.workspace-app:not(.floating-app){background:var(--palette-card);color:var(--palette-text);border:2px solid var(--palette-card-border);border-radius:var(--card-radius);overflow:hidden}
+.workspace-app:not(.floating-app) .workspace-main.proto-manager{background:var(--palette-card);color:var(--palette-text)}
+.workspace-app:not(.floating-app) .manager-navigation,.workspace-app:not(.floating-app) .topbar,
+.workspace-app:not(.floating-app) .workspace-footer{background:var(--palette-card);color:var(--palette-text);border-color:var(--palette-card-border-tint-60)}
+.proto-manager .manager-home .notes{border:0;border-radius:0;background:transparent}
+.proto-manager .manager-home .note-row{background:var(--palette-card);color:var(--palette-text);min-height:var(--card-min-height);padding:8px 12px;margin:8px 0}
+.proto-manager .manager-home .note-row.selected{box-shadow:inset 0 0 0 2px var(--palette-danger-tint-30-alpha-25)}
+.proto-manager .manager-home .note-title{color:var(--palette-text)}
+.settings-card{background:var(--palette-card-tint-50);border:2px solid var(--palette-card-border);color:var(--palette-text)}
+.radius-setting{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:14px 0}
+.radius-setting input[type=range]{width:220px;max-width:100%;accent-color:var(--palette-card-border-tint-20);cursor:pointer}
+
+.proto-note .resize{right:calc(var(--card-radius) * .3);bottom:calc(var(--card-radius) * .3)}
+
+/* Card borders retain one theme color; state feedback uses outlines and shadows. */
+#root .proto-note > .card,#root .task-card,#root .note-row,
+#root .workspace-main.card-detail,#root .settings-card,#root .new-card-tile,
+#root .workspace-app:not(.floating-app),#root .floating-add-card{
+ border-color:var(--palette-card-border);
+}
+
+.canvas-surface{will-change:transform}
+
+/* Smooth native-window compensation; direct canvas/card gestures stay immediate. */
+:root{--canvas-compensation-duration:200ms}
+.canvas-viewport.canvas-easing > .canvas-surface{transition:transform var(--canvas-compensation-duration) ease-out}
+@media(prefers-reduced-motion:reduce){.canvas-viewport.canvas-easing > .canvas-surface{transition:none}}
+
+/* Reparenting has its own top-left handle; ordinary drags only move the window. */
+#root .proto-note .note-title-row .reparent-grip{position:absolute;left:8px;top:10px;z-index:4;width:14px;height:14px;min-width:0;padding:0;border:0;border-radius:50%;background:var(--palette-handle);touch-action:none;cursor:grab!important}
+#root .proto-note .note-title-row .reparent-grip:active{cursor:grabbing!important}
+.proto-note .note-title-row .title,.proto-note .editing-mode .title{padding-left:32px}
+#root .proto-note button.resize,#root .proto-note button.resize *{cursor:nwse-resize!important}
+html.resizing-note #root,html.resizing-note #root *{cursor:nwse-resize!important;user-select:none}
+
+.canvas-drag-setting{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:12px 0;flex-wrap:wrap}
+.canvas-drag-setting select{padding:6px;background:var(--palette-background);color:var(--palette-text);border:1px solid var(--palette-card-border)}
+
+/* Each template owns its violet surface; children keep their own identity. */
+#root .proto-note > .card.prefab,
+#root .workspace-main.card-detail.prefab,
+#root .task-card.prefab,
+#root .note-row.prefab,
+#root .kanban-column.prefab {
+  background:var(--palette-prefab-paper);
+  border-color:var(--palette-prefab-border);
+  color:var(--palette-prefab-ink);
+}
+#root .prefab-badge,
+#root .task-card.prefab > .task-top > .task-kind {
+  display:inline-flex;
+  align-items:center;
+  flex-shrink:0;
+  padding:2px 6px;
+  border-radius:var(--card-radius,10px);
+  background:var(--palette-prefab-border);
+  color:var(--palette-background);
+  font-size:10px;
+  font-weight:600;
+  line-height:1.3;
+  vertical-align:middle;
+}
+#root .page-heading .prefab-badge { margin-left:8px; }
+#root .proto-note > .card.prefab > .note-title-row,
+#root .workspace-main.prefab > .page-heading,
+#root .kanban-column.prefab > .column-heading {
+  background:var(--palette-prefab-soft);
+  box-shadow:inset 0 -3px var(--palette-prefab-border);
+}
+#root .proto-note > .card.prefab > .note-title-row > .title[readonly] {
+  color:var(--palette-prefab-ink);
+}
+#root .kanban-column.prefab > .column-heading > .column-dot {
+  background:var(--palette-prefab-border);
+}
+
+#root .body-placeholder { color:var(--palette-text-tint-40); min-height:1.6em; }
+
+/* Scope template colors to the card's own content, never to nested cards. */
+#root .task-card.prefab > h3,
+#root .note-row.prefab > .note-title,
+#root .proto-note > .card.prefab > .note-title-row > .title,
+#root .proto-note > .card.prefab > .body,
+#root .proto-note > .card.prefab > .body > .content,
+#root .proto-note > .card.prefab > .card-regions > .card-body-region > .body,
+#root .proto-note > .card.prefab > .card-regions > .card-body-region > .body > .content {
+  color:var(--palette-prefab-ink);
+}
+#root .task-card.prefab > .task-preview,
+#root .task-card.prefab > .task-bottom,
+#root .proto-note > .card.prefab > .note-breadcrumb {
+  color:var(--palette-prefab-muted);
+  border-color:var(--palette-prefab-line);
+}
+#root .proto-note > .card.prefab > .card-regions > .child-region,
+#root .workspace-main.prefab > .card-regions > .child-region {
+  border-color:var(--palette-prefab-line);
+}
+#root .proto-note > .card.prefab > .card-regions > .floating-add-card,
+#root .workspace-main.prefab > .card-regions > .floating-add-card,
+#root .kanban-column.prefab > .floating-add-card {
+  background:var(--palette-prefab-soft);
+  color:var(--palette-prefab-ink);
+  border-color:var(--palette-prefab-border);
+}
+
+/* Linked instances use a pale green surface without recoloring nested cards. */
+#root .proto-note > .card.instance,
+#root .workspace-main.card-detail.instance,
+#root .task-card.instance,
+#root .note-row.instance,
+#root .kanban-column.instance {
+  background:var(--palette-instance-paper);
+  border-color:var(--palette-instance-border);
+  color:var(--palette-instance-ink);
+}
+#root .proto-note > .card.instance > .note-title-row,
+#root .workspace-main.instance > .page-heading,
+#root .kanban-column.instance > .column-heading {
+  background:var(--palette-instance-soft);
+}
+#root .task-card.instance > h3,
+#root .note-row.instance > .note-title,
+#root .proto-note > .card.instance > .note-title-row > .title {
+  color:var(--palette-instance-ink);
+}
+
+/* Card identity resets at each card boundary, including nested cards. */
+#root .proto-note > .card,
+#root .workspace-main.card-detail,
+#root .task-card,
+#root .note-row,
+#root .kanban-column {
+  --card-color:var(--palette-card);
+  --card-edge:var(--palette-card-border);
+  border-color:var(--card-edge);
+}
+#root .proto-note > .card.prefab,
+#root .workspace-main.card-detail.prefab,
+#root .task-card.prefab,
+#root .note-row.prefab,
+#root .kanban-column.prefab {
+  --card-color:var(--palette-prefab);
+  --card-edge:var(--palette-prefab-border);
+}
+#root .proto-note > .card.instance,
+#root .workspace-main.card-detail.instance,
+#root .task-card.instance,
+#root .note-row.instance,
+#root .kanban-column.instance {
+  --card-color:var(--palette-instance);
+  --card-edge:var(--palette-instance-border);
+}
+#root .proto-note > .card,
+#root .workspace-main.card-detail,
+#root .task-card,
+#root .note-row { background-color:var(--card-color); }
+#root .card-regions > .child-region { border-color:var(--card-edge,var(--palette-card-border)); }
+#root .floating-add-card { background:var(--card-color,var(--palette-card)); border-color:var(--card-edge,var(--palette-card-border)); color:var(--palette-text); }
+#root .child-region-resizer .resize-rails { border-color:var(--palette-handle); }
+:root { --surface:var(--palette-background); --canvas:var(--palette-background); --sidebar:var(--palette-background); --text:var(--palette-text); --muted:var(--palette-muted-text); --line:var(--palette-handle-tint-60); --accent:var(--palette-accent); --accent-soft:var(--palette-accent-tint-90); --hover:var(--palette-handle-tint-90); color:var(--palette-text); background:var(--palette-background); }
+
+/* Breadcrumbs reserve room for the root and controls; nearest ancestors win. */
+#root .note-breadcrumb { flex-wrap:nowrap; min-width:0; gap:6px; }
+.breadcrumb-bar { display:flex; align-items:center; gap:6px; flex:1; min-width:0; }
+.breadcrumb-bar > .muted { flex:none; white-space:nowrap; font-size:11px; }
+.breadcrumb-bar > .window-drag-space { flex:none; width:12px; }
+.breadcrumb-trail { position:relative; display:flex; align-items:center; flex:1; min-width:0; overflow:hidden; font-size:11px; }
+.breadcrumb-node { display:inline-flex; align-items:center; gap:6px; min-width:0; flex:none; }
+.breadcrumb-root { max-width:40%; }
+.breadcrumb-trail-single > .breadcrumb-root { max-width:100%; }
+.breadcrumb-tail { display:flex; align-items:center; min-width:0; overflow:hidden; }
+.breadcrumb-tail > .breadcrumb-node { min-width:0; flex-shrink:1; }
+#root .breadcrumb-trail button { min-width:0; padding:2px 0; border:0; background:transparent; color:inherit; font-size:inherit; line-height:1.4; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.breadcrumb-separator { flex:none; margin-left:6px; color:var(--palette-handle); }
+.breadcrumb-omission { flex:none; width:18px; text-align:center; color:var(--palette-handle); }
+.breadcrumb-measure { position:absolute; visibility:hidden; pointer-events:none; display:flex; width:max-content; max-width:none; height:0; overflow:hidden; }
+.breadcrumb-measure > .breadcrumb-node { max-width:none; flex:none; }
+#root .prefab-sync-controls { display:flex; align-items:center; gap:0; padding:0; margin-left:auto; flex:none; }
+#root .prefab-sync-controls > button { display:grid; place-items:center; width:22px; height:22px; min-width:22px; padding:0; border:0; border-radius:50%; background:transparent; cursor:pointer; }
+#root .prefab-sync-controls > button > span { width:10px; height:10px; border-radius:50%; background:var(--palette-handle); }
+#root .prefab-sync-controls > button:hover > span { background:var(--palette-accent); }
+#root .prefab-sync-controls > button:disabled { cursor:default; opacity:.5; }
+#root .prefab-sync-controls.sync-error > button > span { background:var(--palette-danger); }
+.sync-error-message { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
+
+/* Library mode reuses the compact grid, with one full-height scrolling collection. */
+.proto-note.waterfall-note { flex:1; min-height:0; }
+.proto-note.waterfall-note .note-children { display:flex; flex-direction:column; flex:1; min-height:0; max-height:none; overflow:hidden; resize:none; padding-bottom:0; }
+.waterfall-note .note-children-heading { flex:none; }
+.proto-note.waterfall-note .grid-layout { flex:1; min-height:0; overflow-y:auto; overflow-x:hidden; align-content:start; padding:8px 0 48px; }
+
+/* Variable-height grid cards, capped at four times their shared minimum. */
+#root .masonry-grid.grid-layout { display:block; overflow-x:hidden; }
+.masonry-surface { position:relative; width:100%; min-width:0; }
+.masonry-surface:not([data-ready]) { visibility:hidden; }
+.masonry-surface > .card-slot { position:absolute; min-width:0; }
+#root .masonry-grid .task-card { height:auto; max-height:var(--grid-card-max-height); overflow:hidden; margin:0; }
+#root .masonry-grid .task-preview { display:block; -webkit-line-clamp:unset; overflow:visible; white-space:pre-wrap; overflow-wrap:anywhere; }
+
+/* Both skins share semantic UI roles; palette formulas provide their actual tones. */
+:root[data-theme=dark] {
+  --surface:var(--palette-background);
+  --canvas:var(--palette-background);
+  --sidebar:var(--palette-background);
+  --text:var(--palette-text);
+  --muted:var(--palette-muted-text);
+  --line:var(--palette-handle-tint-60);
+  --accent:var(--palette-accent);
+  --accent-soft:var(--palette-accent-tint-90);
+  --hover:var(--palette-accent-tint-90);
+  --shadow:0 8px 32px var(--palette-handle-shade-100-alpha-45);
+  color-scheme:dark;
+}
+
+/* Transparent vector display shared by doodle layers and compact previews. */
+.ink-picture { display:block; width:100%; height:auto; }
+.task-ink-preview { max-height:110px; overflow:hidden; }
+.canvas-ink { position:absolute; inset:0; z-index:1000000; pointer-events:none; }
+.canvas-ink > .ink-picture { width:100%; height:100%; overflow:visible; }
+.canvas-ink-input { position:absolute; inset:0; z-index:50; touch-action:none; cursor:crosshair; }
+.canvas-ink-toolbar { position:absolute; left:8px; top:8px; z-index:70; max-width:calc(100% - 16px); }
+
+/* Scroll-attached transparent doodles. Only the two-tool capsule is exposed. */
+.doodle-body { position:relative; }
+.doodle-toolbar { position:sticky; top:0; z-index:60; height:0; display:flex; justify-content:flex-end; pointer-events:none; }
+.doodle-toolbar > .ink-pill { pointer-events:auto; }
+#root .ink-pill { display:inline-flex; flex:none; overflow:hidden; border:1px solid var(--palette-handle-tint-40); border-radius:999px; background:color-mix(in srgb,var(--palette-background) 80%,transparent); }
+#root .ink-pill > button { display:grid; place-items:center; width:32px; height:26px; padding:4px 7px; border:0; border-radius:0; color:var(--palette-text); background:transparent; cursor:pointer; }
+#root .ink-pill > button + button { border-left:1px solid var(--palette-handle-tint-40); }
+#root .ink-pill > button[aria-pressed=true] { background:var(--palette-accent-tint-90); color:var(--palette-accent); }
+.ink-pill svg { width:16px; height:16px; fill:none; stroke:currentColor; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; }
+.doodle-layer { position:absolute; inset:0; width:100%; height:100%; z-index:40; background:transparent; pointer-events:none; }
+.doodle-layer[data-active=true] { pointer-events:all; touch-action:none; cursor:crosshair; }
+.doodle-error { position:sticky; bottom:0; z-index:61; color:var(--palette-danger); font-size:11px; }
+
+/* Drawing controls float in the top-right; guides never intercept gestures. */
+.canvas-ink-toolbar { left:auto; right:8px; top:8px; }
+.doodle-toolbar { display:block; top:8px; height:0; }
+.doodle-toolbar > .ink-pill { position:absolute; top:0; right:8px; }
+.doodle-range { position:sticky; top:0; height:0; z-index:45; pointer-events:none; }
+.doodle-range::after { content:''; position:absolute; top:0; left:0; right:0; height:var(--doodle-panel-height); box-sizing:border-box; border:1.5px dashed var(--palette-accent); border-radius:3px; }
+.canvas-viewport[data-doodle-active=true]::after { content:''; position:absolute; inset:0; z-index:65; pointer-events:none; border:1.5px dashed var(--palette-accent); border-radius:3px; }
+
+/* The resize square is outside every scrolling/resize region and wins hit testing. */
+.workspace-app { position:relative; }
+#root .window-resize-handle { position:absolute; right:calc(var(--card-radius) * .3); bottom:calc(var(--card-radius) * .3); width:18px; height:18px; min-width:18px; padding:0; border:0; border-radius:0; background:var(--palette-handle); z-index:2147483000; touch-action:none; cursor:nwse-resize!important; }
+#root .window-resize-handle:hover { background:var(--palette-accent); }
+#root .horizontal-regions .child-region-resizer { width:calc(100% - 24px); right:24px; }
+#root .vertical-regions .child-region-resizer { height:calc(100% - 24px); bottom:24px; }
+
+/* Manager shell: one frameless card, compact navigation and a responsive collection. */
+html[data-window-kind=manager],html[data-window-kind=manager] body,html[data-window-kind=manager] #root { background:transparent; }
+#root .manager-shell { isolation:isolate; clip-path:inset(0 round var(--card-radius)); cursor:default; }
+#root .manager-shell .workspace-main.proto-manager { padding:0; }
+#root .manager-shell .manager-navigation { display:flex; align-items:center; gap:16px; padding:12px 16px 10px; flex:none; border-bottom:0; }
+#root .manager-shell .manager-navigation > strong { font-size:14px; font-weight:600; margin-right:auto; }
+#root .manager-shell .manager-tabs { display:flex; gap:4px; order:1; }
+#root .manager-shell .manager-tabs button { padding:6px 10px; border:0; background:transparent; border-radius:calc(var(--card-radius) * .6); font-size:12px; color:var(--muted); }
+#root .manager-shell .manager-tabs button:hover { background:var(--palette-card-tint-50); color:var(--text); }
+#root .manager-shell .manager-tabs button.active { background:var(--palette-accent-tint-90); color:var(--palette-accent); }
+#root .manager-shell .manager-close { order:2; display:grid; place-items:center; width:26px; height:26px; padding:0; border:0; background:transparent; font-size:18px; color:var(--muted); }
+#root .manager-shell .manager-close:hover { background:var(--palette-danger-tint-90); color:var(--palette-danger); }
+#root .manager-shell .topbar { height:38px; padding:0 16px; gap:14px; background:var(--palette-card-tint-30); border-bottom:1px solid var(--palette-card-border-tint-60); }
+#root .manager-shell .local-badge { max-width:45%; overflow:hidden; text-overflow:ellipsis; font-size:11px; }
+#root .manager-shell .manager-home { display:flex; flex-direction:column; flex:1; min-height:0; padding:20px 20px 12px; overflow:hidden; }
+#root .manager-shell .manager-home .actions { display:flex; flex-wrap:wrap; gap:8px; }
+#root .manager-shell .manager-home .actions button { padding:7px 12px; font-size:12px; border-radius:calc(var(--card-radius) * .6); }
+#root .manager-shell .manager-home .section { display:flex; align-items:center; gap:8px; margin:20px 0 12px; font-size:12px; font-weight:500; color:var(--muted); }
+#root .manager-shell .manager-home .section span { padding:2px 6px; font-size:10px; background:var(--palette-card-tint-50); border-radius:calc(var(--card-radius) * .4); }
+#root .manager-shell .manager-home .notes { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); grid-auto-rows:minmax(100px,max-content); align-content:start; gap:12px; flex:1; min-height:0; max-height:none; overflow:auto; padding:2px 4px 18px 2px; margin:0; list-style:none; }
+#root .manager-shell .manager-home .hint { flex:none; margin:10px 0 0; font-size:11px; line-height:1.6; color:var(--muted); }
+#root .manager-shell .workspace-footer { flex:none; padding:8px 32px 8px 16px; min-height:32px; font-size:10px; border-top:1px solid var(--palette-card-border-tint-60); }
+#root .manager-shell .settings-page { padding:22px; overflow:auto; }
+#root .manager-shell .settings-page > h1 { font-size:20px; margin:8px 0 20px; }
+#root .manager-shell .settings-card { padding:18px; margin-bottom:14px; box-shadow:none; }
+#root .manager-shell .settings-card h3 { font-size:13px; margin:0 0 12px; }
+#root .manager-shell .settings-card p { font-size:12px; line-height:1.7; overflow-wrap:anywhere; }
+#root .manager-shell .settings-card input:not([type=range]),#root .manager-shell .settings-card select { max-width:100%; padding:8px 10px; border:1px solid var(--palette-card-border-tint-60); border-radius:calc(var(--card-radius) * .6); }
+#root .manager-shell .window-resize-handle,#root .manager-shell .window-resize-handle * { cursor:nwse-resize!important; }
+
+#root .task-card > .child-delete { margin-left:auto; display:grid; place-items:center; width:24px; height:24px; min-width:24px; padding:4px; border:0; background:transparent; color:var(--muted); cursor:pointer; }
+#root .child-delete svg { width:16px; height:16px; fill:none; stroke:currentColor; stroke-width:1.5; stroke-linecap:round; stroke-linejoin:round; }
+#root .task-card > .child-delete:hover { color:var(--palette-danger); background:var(--palette-danger-tint-90); }
+#root .manager-shell .topbar { height:auto; min-height:38px; flex-wrap:wrap; padding-top:6px; padding-bottom:6px; }
+#root .workspace-location { display:flex; align-items:center; min-width:0; max-width:100%; flex:1 1 260px; }
+#root .workspace-path { min-width:0; padding:2px 0; border:0; background:transparent; font-size:11px; text-align:left; overflow-wrap:anywhere; color:var(--muted); }
+#root .workspace-path:hover { color:var(--palette-accent); }
+
+#root .workspace-reset { flex:none; margin-left:8px; padding:0; width:20px; height:20px; border:0; background:transparent; font-size:15px; color:var(--muted); }
+#root .workspace-reset:hover { color:var(--palette-danger); }
+
+#root .task-card { display:flex; align-items:flex-start; gap:8px; }
+#root .child-card-content { flex:1; min-width:0; overflow:hidden; }
+#root .task-card > .child-delete { flex:none; margin-left:0; }
+#root .breadcrumb-trail > .breadcrumb-back { flex:none; width:22px; height:22px; margin-right:4px; padding:0; font-size:15px; }
+#root .breadcrumb-back:disabled { opacity:.3; cursor:default; }

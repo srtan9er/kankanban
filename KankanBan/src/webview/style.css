@@ -1,0 +1,485 @@
+@import './platte.css';
+:root {
+  color-scheme: dark;
+  font-family: "Microsoft YaHei", system-ui, sans-serif;
+  font-size: 13px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--palette-handle-shade-80);
+  color: var(--palette-handle-tint-80);
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* ── 卡片窗口（card-{id}）────────────────────────────────────────────────────
+   Rust 侧建窗时是 `transparent(true)` + `decorations(false)`，所以页面自己必须
+   "没有背景"：否则整块窗口矩形都是实心的，卡片的圆角与四周留白就白做了。
+   由 `main.tsx` 按窗口角色挂上这个类。 */
+
+.card-window-body {
+  background: transparent;
+}
+
+/* 状态栏也做成一张浮起来的小条，跟卡片一样的圆角 */
+.card-window-body .status {
+  margin: 0 6px 6px;
+  border: 1px solid var(--palette-handle-shade-50);
+  border-radius: 6px;
+}
+
+/* §3.1 三区域 */
+.card-window {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  border: 1px solid var(--palette-handle-shade-50);
+  border-radius: 6px;
+  margin: 6px;
+  overflow: hidden;
+}
+
+.region {
+  min-height: 0;
+}
+
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 6px;
+  background: var(--palette-handle-shade-70);
+  border-bottom: 1px solid var(--palette-handle-shade-50);
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+.crumb {
+  background: none;
+  border: none;
+  color: var(--palette-text-tint-50);
+  cursor: pointer;
+  padding: 2px 4px;
+  font: inherit;
+}
+
+.crumb.current {
+  color: var(--palette-handle-tint-80);
+  font-weight: 600;
+}
+
+.crumb-sep {
+  color: var(--palette-card-shade-60);
+}
+
+.content {
+  padding: 8px 10px;
+  overflow: auto;
+  background: var(--palette-handle-shade-70);
+}
+
+.content-body {
+  margin: 0;
+  white-space: pre-wrap;
+  font: inherit;
+  cursor: text;
+  min-height: 1.4em;
+}
+
+/* §3.3 单击编辑：三处内联编辑框共用一套外观，用蓝边表示"正在编辑" */
+.title-input,
+.crumb-input,
+.content-input {
+  font: inherit;
+  color: inherit;
+  background: var(--palette-handle-shade-80);
+  border: 1px solid var(--palette-accent-tint-40);
+  border-radius: 3px;
+  padding: 2px 4px;
+}
+
+.title-input {
+  width: 110px;
+}
+
+.crumb-input {
+  width: 96px;
+}
+
+.content-input {
+  display: block;
+  width: 100%;
+  min-height: 120px;
+  resize: vertical;
+}
+
+/* §3.6 预制体视觉区分：预制体**内部**发蓝光，实例**外圈**发蓝光 */
+.glow-prefab {
+  /* 内发光：往内投一层蓝晕，不改外轮廓 */
+  box-shadow: inset 0 0 0 1px var(--palette-accent-tint-40), inset 0 0 10px var(--palette-accent-tint-40-alpha-55);
+}
+
+.glow-instance {
+  /* 外发光：往外投，和"内部"在视觉上能一眼分开 */
+  box-shadow: 0 0 0 2px var(--palette-accent-tint-40-alpha-75), 0 0 10px var(--palette-accent-tint-40-alpha-45);
+}
+
+/* 既是预制体又是实例时（预制体里嵌预制体）：两种光都上，内发光在外发光之上 */
+.glow-prefab.glow-instance {
+  box-shadow:
+    inset 0 0 0 1px var(--palette-accent-tint-40),
+    inset 0 0 10px var(--palette-accent-tint-40-alpha-55),
+    0 0 0 2px var(--palette-accent-tint-40-alpha-75);
+}
+
+/* 编辑时不能拖，否则选字会变成拖放 */
+.compact-card.editing {
+  cursor: text;
+}
+
+/* §3.3 右键菜单 与 §2.7 删除确认（浮层） */
+.menu-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+}
+
+.context-menu {
+  position: absolute;
+  margin: 0;
+  padding: 4px 0;
+  list-style: none;
+  min-width: 136px;
+  background: var(--palette-card-shade-80);
+  border: 1px solid var(--palette-handle-shade-50);
+  border-radius: 4px;
+  box-shadow: 0 6px 18px var(--palette-handle-shade-100-alpha-45);
+}
+
+.menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+
+.menu-item:hover {
+  background: var(--palette-handle-shade-50);
+}
+
+.menu-item.danger {
+  color: var(--palette-danger-tint-40);
+}
+
+.menu-item.active {
+  color: var(--palette-accent-tint-40);
+}
+
+.menu-heading {
+  padding: 6px 10px 2px;
+  font-size: 11px;
+  color: var(--palette-card-shade-60);
+  user-select: none;
+}
+
+.menu-check {
+  display: inline-block;
+  width: 14px;
+  color: var(--palette-accent-tint-40);
+}
+
+.confirm-box {
+  position: absolute;
+  left: 50%;
+  top: 40%;
+  transform: translate(-50%, -50%);
+  min-width: 250px;
+  padding: 14px 16px;
+  background: var(--palette-card-shade-80);
+  border: 1px solid var(--palette-handle-shade-50);
+  border-radius: 6px;
+  box-shadow: 0 10px 30px var(--palette-handle-shade-100-alpha-55);
+}
+
+.confirm-title {
+  margin: 0 0 6px;
+  font-weight: 600;
+}
+
+.confirm-count {
+  margin: 0 0 12px;
+  color: var(--palette-text-tint-50);
+}
+
+.confirm-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.confirm-ok,
+.confirm-cancel {
+  font: inherit;
+  padding: 4px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.confirm-ok {
+  background: var(--palette-danger-tint-40);
+  border: none;
+  color: var(--palette-handle-shade-70);
+}
+
+.confirm-cancel {
+  background: none;
+  border: 1px solid var(--palette-handle-shade-50);
+  color: inherit;
+}
+
+.children {
+  border-top: 1px solid var(--palette-handle-shade-50);
+  background: var(--palette-handle-shade-80);
+  overflow: auto;
+  padding: 6px;
+}
+
+.child-row {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  min-height: 40px;
+}
+
+/* §3.1 子卡区的三种排布：底部横排（.child-row）/ 格子 / 二维无限 */
+.child-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  gap: 6px;
+  align-content: start;
+}
+
+.child-plane {
+  position: relative;
+  min-height: 260px;
+  overflow: auto;
+}
+
+.plane-slot {
+  position: absolute;
+}
+
+.plane-slot .compact-card {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* §3.2 紧凑卡 */
+.compact-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 96px;
+  padding: 6px 8px;
+  background: var(--palette-card-shade-80);
+  border: 1px solid var(--palette-handle-shade-50);
+  border-radius: 4px;
+  cursor: grab;
+  user-select: none;
+}
+
+.compact-card.dragging {
+  opacity: 0.4;
+}
+
+.compact-title {
+  white-space: nowrap;
+}
+
+.compact-more {
+  color: var(--palette-accent-tint-40);
+}
+
+.drop-slot {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -3px;
+  width: 6px;
+}
+
+.drop-slot.tail {
+  position: static;
+  width: 48px;
+  min-height: 32px;
+  border: 1px dashed var(--palette-handle-shade-50);
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.drop-slot.tail .hint {
+  color: var(--palette-card-shade-60);
+  font-size: 11px;
+}
+
+/* §2.5.1 board 的跨一层投影 */
+.board {
+  display: flex;
+  gap: 8px;
+  height: 100%;
+}
+
+.board-column {
+  flex: 1 1 0;
+  min-width: 120px;
+  display: flex;
+  flex-direction: column;
+  background: var(--palette-handle-shade-70);
+  border: 1px solid var(--palette-handle-shade-60);
+  border-radius: 4px;
+}
+
+.column-header {
+  padding: 4px 8px;
+  font-weight: 600;
+  border-bottom: 1px solid var(--palette-handle-shade-60);
+  cursor: pointer;
+}
+
+.column-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+  overflow: auto;
+}
+
+.status {
+  display: flex;
+  justify-content: space-between;
+  padding: 2px 8px;
+  font-size: 11px;
+  color: var(--palette-text-tint-50);
+  border-top: 1px solid var(--palette-handle-shade-50);
+  background: var(--palette-handle-shade-70);
+}
+
+.status-right {
+  color: var(--palette-card-shade-60);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.undo-button {
+  font: inherit;
+  font-size: 11px;
+  padding: 1px 8px;
+  border-radius: 3px;
+  border: 1px solid var(--palette-handle-shade-50);
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+
+.undo-button:hover:not(:disabled) {
+  background: var(--palette-handle-shade-50);
+}
+
+.undo-button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* ── 桌面卡片（多窗口，§2.8 W′） ────────────────────────────────────────────
+   关掉的窗口从这里重新打开 —— 用户定案「关闭卡片不影响任何结构」。
+   只在 main 里渲染（`desktopStrip`），所以它比三区域更像"控制面板"。 */
+
+.desktop-strip {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--palette-handle-shade-50);
+  background: var(--palette-handle-shade-70);
+  flex: 0 0 auto;
+}
+
+.desktop-strip-label {
+  font-size: 11px;
+  color: var(--palette-text-tint-50);
+  margin-right: 2px;
+}
+
+.desktop-strip-empty {
+  font-size: 11px;
+  color: var(--palette-card-shade-60);
+}
+
+.desktop-chip {
+  font: inherit;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  border: 1px solid var(--palette-handle-shade-50);
+  background: none;
+  color: var(--palette-handle-tint-60);
+  cursor: pointer;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.desktop-chip:hover {
+  background: var(--palette-handle-shade-50);
+}
+
+/* 开着窗口的卡：实心，一眼分得出"它在屏幕上" */
+.desktop-chip.is-open {
+  background: var(--palette-accent-shade-40);
+  border-color: var(--palette-accent-shade-20);
+  color: var(--palette-accent-tint-90);
+}
+
+.empty-close {
+  font: inherit;
+  font-size: 12px;
+  margin-top: 8px;
+  padding: 3px 12px;
+  border-radius: 4px;
+  border: 1px solid var(--palette-handle-shade-50);
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+
+.empty-close:hover {
+  background: var(--palette-handle-shade-50);
+}

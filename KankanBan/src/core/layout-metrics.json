@@ -1,0 +1,14 @@
+{
+  "cardMinWidth": 140,
+  "cardMinHeight": 70,
+  "scrollbar": 18,
+  "childPadding": 20,
+  "childHeaderHeight": 64,
+  "columnPadding": 6,
+  "columnGap": 16,
+  "notePadding": 24,
+  "managerPadding": 44,
+  "sidebarWidth": 232,
+  "windowBorder": 4,
+  "boardMainChromeHeight": 500
+}

@@ -1,0 +1,308 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+  user-select: none;
+}
+
+/* ---------- 管理器 ---------- */
+.proto-manager {
+  padding: 22px;
+  background: var(--palette-card-tint-90);
+  color: var(--palette-handle-shade-60);
+}
+.proto-manager h1 { font-size: 17px; margin-bottom: 18px; font-weight: 600; }
+.proto-manager .actions { display: flex; gap: 10px; }
+.proto-manager button {
+  padding: 8px 16px;
+  font-size: 13px;
+  border: 1px solid var(--palette-text-tint-80);
+  border-radius: 6px;
+  background: var(--palette-background);
+  cursor: pointer;
+}
+.proto-manager button.primary { background: var(--palette-accent); color: var(--palette-background); border-color: var(--palette-accent); }
+.proto-manager .hint { margin-top: 22px; font-size: 12px; color: var(--palette-text-tint-40); line-height: 1.7; }
+/* 操作结果/失败原因就地显示，避免"点了没反应"这种无从下手的状态 */
+.proto-manager .status { margin-top: 14px; font-size: 12px; color: var(--palette-handle-shade-40); min-height: 1.2em; }
+.proto-manager .status.error { color: var(--palette-danger); }
+
+/* ---------- 管理器里的便签列表 ---------- */
+.proto-manager .section { margin-top: 20px; font-size: 13px; font-weight: 600; color: var(--palette-handle-shade-30); }
+.proto-manager .section span { color: var(--palette-text-tint-50); font-weight: 400; }
+
+.proto-manager .notes {
+  list-style: none;
+  margin-top: 8px;
+  max-height: 46vh;
+  overflow-y: auto;
+  border: 1px solid var(--palette-handle-tint-80);
+  border-radius: 6px;
+  background: var(--palette-background);
+}
+.proto-manager .notes:empty { display: none; }
+
+.proto-manager .note-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px 4px 10px;
+  border-bottom: 1px solid var(--palette-handle-tint-90);
+  font-size: 13px;
+  cursor: pointer;
+}
+.proto-manager .note-row:last-child { border-bottom: none; }
+.proto-manager .note-row:hover { background: var(--palette-accent-tint-90); }
+.proto-manager .note-row.selected { background: var(--palette-accent-tint-90); }
+
+.proto-manager .note-row .note-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--palette-handle-shade-60);
+}
+.proto-manager .note-row .note-title.untitled { color: var(--palette-text-tint-50); }
+
+.proto-manager .note-row .row-btn {
+  flex: none;
+  width: 24px; height: 24px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--palette-handle-shade-20);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+.proto-manager .note-row .row-btn:hover:not(:disabled) {
+  background: var(--palette-accent-tint-80);
+  border-color: var(--palette-accent-tint-70);
+}
+.proto-manager .note-row .row-btn:disabled { opacity: .22; cursor: default; }
+.proto-manager .note-row .row-btn.pin.off { opacity: .35; }
+
+.proto-manager .empty { margin-top: 8px; font-size: 12px; color: var(--palette-text-tint-50); }
+
+/* ---------- 便签 ---------- */
+html, .proto-note {
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+}
+
+.proto-note .card {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background: var(--palette-card);
+  border-radius: var(--card-radius, 10px);
+  border: 2px solid transparent;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: border-color .12s, box-shadow .12s;
+  cursor: grab;
+}
+
+/* 反馈一律画在卡片【内侧】。
+   窗口就是 260×320，卡片 width/height 均为 100%，html/body 又是 overflow:hidden，
+   所以向外的 box-shadow（原来的 0 6px 18px 投影）和 transform: scale(1.02)
+   都会越出窗口被裁掉 —— 投影根本看不见，高亮放大时四边还被切掉。 */
+.proto-note .card.dragging { cursor: grabbing; }
+.proto-note .card.highlight {
+  border-color: var(--palette-danger-tint-30);
+  box-shadow: inset 0 0 0 4px var(--palette-danger-tint-30-alpha-28);
+}
+/* 初始化或交互出错时可见化：避免出现"窗口还在、但点了没反应"的哑窗口 */
+.proto-note .card.error {
+  border-color: var(--palette-danger-tint-10);
+  box-shadow: inset 0 0 0 4px var(--palette-danger-tint-10-alpha-28);
+}
+
+.proto-note .title,
+.proto-note .content {
+  border: none;
+  outline: none;
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  cursor: inherit;
+  user-select: text;
+}
+.proto-note .title {
+  /* padding-right 要让开右上角四个按钮（折叠 84 / 置顶 58 / 切换 32 / 关闭 6） */
+  padding: 10px 112px 6px 14px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--palette-text);
+  width: 100%;
+  /* 折叠后窗口只剩标题行那么高；不禁掉收缩的话 flex 会把它压扁导致文字被裁 */
+  flex: none;
+}
+
+/* 内容区：编辑用的 textarea 与预览用的渲染结果共用同一块空间，同一时刻只显示一个 */
+.proto-note .body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.proto-note .content {
+  flex: 1;
+  min-height: 0;
+  padding: 6px 14px 12px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--palette-text-shade-20);
+  resize: none;
+  width: 100%;
+}
+
+/* 标题行右上角的四个按钮，自右向左：关闭、预览/编辑、置顶、折叠 */
+.proto-note .close,
+.proto-note .toggle,
+.proto-note .pin,
+.proto-note .collapse {
+  position: absolute;
+  top: 6px;
+  /* 显式抬到标题输入框之上：输入框 width:100% 覆盖了同一片区域，
+     不能依赖"定位元素默认绘制在流内元素之上"这一条就万事大吉。 */
+  z-index: 1;
+  width: 22px; height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--palette-text-tint-20);
+  line-height: 1;
+  cursor: pointer;
+}
+.proto-note .close    { right: 6px;  font-size: 16px; }
+.proto-note .toggle   { right: 32px; font-size: 13px; }
+.proto-note .pin      { right: 58px; font-size: 12px; }
+.proto-note .collapse { right: 84px; font-size: 11px; }
+
+.proto-note .close:hover { background: var(--palette-danger-tint-20); color: var(--palette-background); }
+.proto-note .toggle:hover,
+.proto-note .pin:hover,
+.proto-note .collapse:hover { background: var(--palette-card-border-tint-60); color: var(--palette-text); }
+
+/* 未置顶：把图钉调淡，当前状态一眼可见 */
+.proto-note .pin.off { opacity: .35; }
+
+/* ---------- 吸附对齐提示 ----------
+   拖动过程中窗口不做位移，只在这里提示"哪条边将要贴上"。
+   必须画在卡片【内侧】：窗口就是卡片那么大，向外画会被裁掉（见 7.14）。
+   每个轴同时只会命中一条边，所以 ::before 管左右、::after 管上下就够了。 */
+.proto-note .card::before,
+.proto-note .card::after {
+  content: '';
+  position: absolute;
+  background: var(--palette-accent-shade-40);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 2;
+  transition: opacity .06s;
+}
+.proto-note .card::before { top: 0; bottom: 0; width: 3px; }   /* 左右边条 */
+.proto-note .card::after  { left: 0; right: 0; height: 3px; }  /* 上下边条 */
+
+.proto-note .card.snap-left::before   { left: 0;   opacity: 1; }
+.proto-note .card.snap-right::before  { right: 0;  opacity: 1; }
+.proto-note .card.snap-top::after     { top: 0;    opacity: 1; }
+.proto-note .card.snap-bottom::after  { bottom: 0; opacity: 1; }
+
+/* ---------- 调整大小把手 ----------
+   放在卡片右下角，填满那个方形角。z-index 要压过 .body（里面的 textarea
+   覆盖了同一片区域），否则点不到。 */
+.proto-note .resize {
+  position: absolute;
+  right: 0; bottom: 0;
+  width: 16px; height: 16px;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: var(--palette-text-alpha-18);
+  cursor: nwse-resize;
+  z-index: 3;
+}
+.proto-note .resize:hover { background: var(--palette-text-alpha-34); }
+.proto-note .resize[hidden] { display: none; }
+
+/* ---------- Markdown 预览 ---------- */
+.proto-note .preview {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 6px 14px 12px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--palette-text-shade-20);
+  user-select: text;
+  cursor: inherit;
+  overflow-wrap: anywhere;
+}
+.proto-note .preview[hidden] { display: none; }
+.proto-note .content[hidden] { display: none; }
+
+.proto-note .preview > :first-child { margin-top: 0; }
+.proto-note .preview > :last-child { margin-bottom: 0; }
+.proto-note .preview h1,
+.proto-note .preview h2,
+.proto-note .preview h3,
+.proto-note .preview h4,
+.proto-note .preview h5,
+.proto-note .preview h6 {
+  margin: .6em 0 .35em;
+  line-height: 1.3;
+  color: var(--palette-text);
+}
+.proto-note .preview h1 { font-size: 16px; }
+.proto-note .preview h2 { font-size: 15px; }
+.proto-note .preview h3 { font-size: 14px; }
+.proto-note .preview h4,
+.proto-note .preview h5,
+.proto-note .preview h6 { font-size: 13px; }
+.proto-note .preview p { margin: .45em 0; }
+.proto-note .preview ul,
+.proto-note .preview ol { margin: .45em 0; padding-left: 1.4em; }
+.proto-note .preview li { margin: .15em 0; }
+.proto-note .preview blockquote {
+  margin: .5em 0;
+  padding: .1em .6em;
+  border-left: 3px solid var(--palette-card-border-tint-40);
+  color: var(--palette-text-tint-10);
+}
+.proto-note .preview code {
+  font-family: 'Cascadia Mono', Consolas, 'Courier New', monospace;
+  font-size: 12px;
+  background: var(--palette-handle-shade-100-alpha-7);
+  padding: .05em .3em;
+  border-radius: 3px;
+}
+.proto-note .preview pre {
+  margin: .5em 0;
+  padding: .5em .6em;
+  background: var(--palette-handle-shade-100-alpha-7);
+  border-radius: 5px;
+  overflow-x: auto;
+}
+.proto-note .preview pre code { background: none; padding: 0; }
+.proto-note .preview hr {
+  margin: .7em 0;
+  border: none;
+  border-top: 1px solid var(--palette-card-border-tint-60);
+}
+.proto-note .preview a { color: var(--palette-accent-shade-20); text-decoration: underline; cursor: pointer; }
+.proto-note .preview a:hover { color: var(--palette-accent-shade-40); }
+.proto-note .preview strong { font-weight: 700; }
+.proto-note .preview del { opacity: .65; }
+.proto-note .preview:empty::before {
+  content: var(--empty-card-text);
+  color: var(--palette-card-shade-40);
+}
+

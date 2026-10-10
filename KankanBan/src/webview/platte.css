@@ -1,0 +1,126 @@
+/* Eight independent skin inputs. Change these colors to recolor the UI.
+ * Day borders darken card colors; night borders lighten them. Gray derives from handle.
+ * White/black below are mixing endpoints, not additional skin inputs. */
+:root {
+  --palette-card: #fff9c4; /* 普通卡片 */
+  --palette-prefab: #e1d5ed; /* 预制体卡片 */
+  --palette-instance: #d9efdb; /* 实例卡片 */
+  --palette-background: #ffffff; /* 背景 */
+  --palette-text: #5d4037; /* 文字 */
+  --palette-accent: #4a90e2; /* 强调／交互反馈 */
+  --palette-danger: #c62828; /* 危险／错误 */
+  --palette-handle: #8c8c8c; /* 手柄及全部中性灰 */
+
+  /* Polarity-aware mixing endpoints. Alpha shadows always retain black. */
+  --palette-muted-text:color-mix(in srgb,var(--palette-handle) 60%,black);
+  --palette-shade-end:black;
+  --palette-tint-end:white;
+
+  /* Derived roles and shades; no independent border color. */
+  --palette-card-border: color-mix(in srgb, var(--palette-card) 55%, var(--palette-shade-end));
+  --palette-prefab-border: color-mix(in srgb, var(--palette-prefab) 55%, var(--palette-shade-end));
+  --palette-instance-border: color-mix(in srgb, var(--palette-instance) 55%, var(--palette-shade-end));
+  --palette-prefab-paper: var(--palette-prefab);
+  --palette-prefab-soft: color-mix(in srgb, var(--palette-prefab) 60%, var(--palette-background));
+  --palette-prefab-ink: var(--palette-text);
+  --palette-instance-paper: var(--palette-instance);
+  --palette-instance-soft: color-mix(in srgb, var(--palette-instance) 60%, var(--palette-background));
+  --palette-instance-ink: var(--palette-text);
+  --palette-prefab-line: var(--palette-prefab-border);
+  --palette-prefab-muted: var(--palette-muted-text);
+  --palette-accent-shade-10: color-mix(in srgb, var(--palette-accent) 90%, var(--palette-shade-end));
+  --palette-accent-shade-20: color-mix(in srgb, var(--palette-accent) 80%, var(--palette-shade-end));
+  --palette-accent-shade-30: color-mix(in srgb, var(--palette-accent) 70%, var(--palette-shade-end));
+  --palette-accent-shade-40: color-mix(in srgb, var(--palette-accent) 60%, var(--palette-shade-end));
+  --palette-accent-tint-30: color-mix(in srgb, var(--palette-accent) 70%, var(--palette-tint-end));
+  --palette-accent-tint-30-alpha-13: color-mix(in srgb, var(--palette-accent-tint-30) 13%, transparent);
+  --palette-accent-tint-30-alpha-40: color-mix(in srgb, var(--palette-accent-tint-30) 40%, transparent);
+  --palette-accent-tint-40: color-mix(in srgb, var(--palette-accent) 60%, var(--palette-tint-end));
+  --palette-accent-tint-40-alpha-45: color-mix(in srgb, var(--palette-accent-tint-40) 45%, transparent);
+  --palette-accent-tint-40-alpha-55: color-mix(in srgb, var(--palette-accent-tint-40) 55%, transparent);
+  --palette-accent-tint-40-alpha-75: color-mix(in srgb, var(--palette-accent-tint-40) 75%, transparent);
+  --palette-accent-tint-70: color-mix(in srgb, var(--palette-accent) 30%, var(--palette-tint-end));
+  --palette-accent-tint-80: color-mix(in srgb, var(--palette-accent) 20%, var(--palette-tint-end));
+  --palette-accent-tint-90: color-mix(in srgb, var(--palette-accent) 10%, var(--palette-tint-end));
+  --palette-card-border-tint-20: color-mix(in srgb, var(--palette-card-border) 80%, var(--palette-tint-end));
+  --palette-card-border-tint-40: color-mix(in srgb, var(--palette-card-border) 60%, var(--palette-tint-end));
+  --palette-card-border-tint-60: color-mix(in srgb, var(--palette-card-border) 40%, var(--palette-tint-end));
+  --palette-card-shade-10: color-mix(in srgb, var(--palette-card) 90%, var(--palette-shade-end));
+  --palette-card-shade-40: color-mix(in srgb, var(--palette-card) 60%, var(--palette-shade-end));
+  --palette-card-shade-50: color-mix(in srgb, var(--palette-card) 50%, var(--palette-shade-end));
+  --palette-card-shade-60: color-mix(in srgb, var(--palette-card) 40%, var(--palette-shade-end));
+  --palette-card-shade-80: color-mix(in srgb, var(--palette-card) 20%, var(--palette-shade-end));
+  --palette-card-tint-50: color-mix(in srgb, var(--palette-card) 50%, var(--palette-tint-end));
+  --palette-card-tint-90: color-mix(in srgb, var(--palette-card) 10%, var(--palette-tint-end));
+  --palette-danger-shade-10: color-mix(in srgb, var(--palette-danger) 90%, var(--palette-shade-end));
+  --palette-danger-shade-20: color-mix(in srgb, var(--palette-danger) 80%, var(--palette-shade-end));
+  --palette-danger-tint-10: color-mix(in srgb, var(--palette-danger) 90%, var(--palette-tint-end));
+  --palette-danger-tint-10-alpha-28: color-mix(in srgb, var(--palette-danger-tint-10) 28%, transparent);
+  --palette-danger-tint-20: color-mix(in srgb, var(--palette-danger) 80%, var(--palette-tint-end));
+  --palette-danger-tint-30: color-mix(in srgb, var(--palette-danger) 70%, var(--palette-tint-end));
+  --palette-danger-tint-30-alpha-19: color-mix(in srgb, var(--palette-danger-tint-30) 19%, transparent);
+  --palette-danger-tint-30-alpha-25: color-mix(in srgb, var(--palette-danger-tint-30) 25%, transparent);
+  --palette-danger-tint-30-alpha-28: color-mix(in srgb, var(--palette-danger-tint-30) 28%, transparent);
+  --palette-danger-tint-40: color-mix(in srgb, var(--palette-danger) 60%, var(--palette-tint-end));
+  --palette-danger-tint-60: color-mix(in srgb, var(--palette-danger) 40%, var(--palette-tint-end));
+  --palette-danger-tint-90: color-mix(in srgb, var(--palette-danger) 10%, var(--palette-tint-end));
+  --palette-handle-shade-100: color-mix(in srgb, var(--palette-handle) 0%, black);
+  --palette-handle-shade-100-alpha-13: color-mix(in srgb, var(--palette-handle-shade-100) 13%, transparent);
+  --palette-handle-shade-100-alpha-20: color-mix(in srgb, var(--palette-handle-shade-100) 20%, transparent);
+  --palette-handle-shade-100-alpha-45: color-mix(in srgb, var(--palette-handle-shade-100) 45%, transparent);
+  --palette-handle-shade-100-alpha-55: color-mix(in srgb, var(--palette-handle-shade-100) 55%, transparent);
+  --palette-handle-shade-100-alpha-7: color-mix(in srgb, var(--palette-handle-shade-100) 7%, transparent);
+  --palette-handle-shade-20: color-mix(in srgb, var(--palette-handle) 80%, var(--palette-shade-end));
+  --palette-handle-shade-30: color-mix(in srgb, var(--palette-handle) 70%, var(--palette-shade-end));
+  --palette-handle-shade-40: color-mix(in srgb, var(--palette-handle) 60%, var(--palette-shade-end));
+  --palette-handle-shade-50: color-mix(in srgb, var(--palette-handle) 50%, var(--palette-shade-end));
+  --palette-handle-shade-60: color-mix(in srgb, var(--palette-handle) 40%, var(--palette-shade-end));
+  --palette-handle-shade-70: color-mix(in srgb, var(--palette-handle) 30%, var(--palette-shade-end));
+  --palette-handle-shade-70-alpha-2: color-mix(in srgb, var(--palette-handle-shade-70) 2%, transparent);
+  --palette-handle-shade-70-alpha-5: color-mix(in srgb, var(--palette-handle-shade-70) 5%, transparent);
+  --palette-handle-shade-80: color-mix(in srgb, var(--palette-handle) 20%, var(--palette-shade-end));
+  --palette-handle-shade-80-alpha-33: color-mix(in srgb, var(--palette-handle-shade-80) 33%, transparent);
+  --palette-handle-tint-10: color-mix(in srgb, var(--palette-handle) 90%, var(--palette-tint-end));
+  --palette-handle-tint-20: color-mix(in srgb, var(--palette-handle) 80%, var(--palette-tint-end));
+  --palette-handle-tint-30: color-mix(in srgb, var(--palette-handle) 70%, var(--palette-tint-end));
+  --palette-handle-tint-40: color-mix(in srgb, var(--palette-handle) 60%, var(--palette-tint-end));
+  --palette-handle-tint-60: color-mix(in srgb, var(--palette-handle) 40%, var(--palette-tint-end));
+  --palette-handle-tint-80: color-mix(in srgb, var(--palette-handle) 20%, var(--palette-tint-end));
+  --palette-handle-tint-90: color-mix(in srgb, var(--palette-handle) 10%, var(--palette-tint-end));
+  --palette-text-alpha-18: color-mix(in srgb, var(--palette-text) 18%, transparent);
+  --palette-text-alpha-34: color-mix(in srgb, var(--palette-text) 34%, transparent);
+  --palette-text-shade-20: color-mix(in srgb, var(--palette-text) 80%, var(--palette-shade-end));
+  --palette-text-shade-20-alpha-27: color-mix(in srgb, var(--palette-text-shade-20) 27%, transparent);
+  --palette-text-tint-10: color-mix(in srgb,var(--palette-text) 98%,var(--palette-background));
+  --palette-text-tint-20: color-mix(in srgb,var(--palette-text) 96%,var(--palette-background));
+  --palette-text-tint-40: color-mix(in srgb,var(--palette-text) 94%,var(--palette-background));
+  --palette-text-tint-50: color-mix(in srgb,var(--palette-text) 92%,var(--palette-background));
+  --palette-text-tint-60: color-mix(in srgb,var(--palette-text) 90%,var(--palette-background));
+  --palette-text-tint-80: color-mix(in srgb, var(--palette-text) 20%, var(--palette-tint-end));
+  --palette-text-tint-90: color-mix(in srgb, var(--palette-text) 10%, var(--palette-tint-end));
+}
+
+/* Night skin: eight independent inputs, with a different derivation polarity. */
+:root[data-theme=dark] {
+  --palette-card:#34382b;
+  --palette-prefab:#3d3448;
+  --palette-instance:#2b4035;
+  --palette-background:#171a1f;
+  --palette-text:#e7eaf0;
+  --palette-accent:#89b7f0;
+  --palette-danger:#ff9292;
+  --palette-handle:#afb5be;
+  --palette-muted-text:var(--palette-handle);
+  --palette-shade-end:white;
+  --palette-tint-end:var(--palette-background);
+  --palette-card-border:color-mix(in srgb,var(--palette-card) 60%,white);
+  --palette-prefab-border:color-mix(in srgb,var(--palette-prefab) 60%,white);
+  --palette-instance-border:color-mix(in srgb,var(--palette-instance) 60%,white);
+  --palette-text-tint-10:color-mix(in srgb,var(--palette-text) 90%,var(--palette-background));
+  --palette-text-tint-20:color-mix(in srgb,var(--palette-text) 80%,var(--palette-background));
+  /* Secondary text needs a foreground floor, rather than fading into the dark surface. */
+  --palette-text-tint-40:color-mix(in srgb,var(--palette-text) 80%,var(--palette-background));
+  --palette-text-tint-50:color-mix(in srgb,var(--palette-text) 77%,var(--palette-background));
+  --palette-text-tint-60:color-mix(in srgb,var(--palette-text) 75%,var(--palette-background));
+  color-scheme:dark;
+}

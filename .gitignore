@@ -1,0 +1,17 @@
+# Local dependencies and generated outputs
+node_modules/
+dist/
+target/
+gen/
+.kkb/
+.recovery/
+*.log
+*.zip
+.env
+.env.*
+!.env.example
+.vscode/
+.idea/
+
+# Local prototype (not published)
+sticky-tauri/
