@@ -144,7 +144,7 @@ test('closeWindow 拒绝关闭 main —— 单写者（方案 A）下写者不�
 
 // ── 子集关系：树位置决定"能不能有窗口" ──────────────────────────────────────
 
-test('拖进容器 → 从桌面卡片里消失，开着的窗口随之失效', () => {
+test('拖进容器 → 不再是根卡，已有独立窗口仍然有效', () => {
   const session = makeBareSession();
   const container = createCard(session, { parentId: null, title: '容器' });
   const loose = createCard(session, { parentId: null, title: '浮在外面的卡' });
@@ -155,7 +155,7 @@ test('拖进容器 → 从桌面卡片里消失，开着的窗口随之失效', 
   moveCard(session, loose, container, 0);
 
   const after = openWindowSet(session.state, openWindowsOf(view));
-  assert.deepEqual(after, [container], '有父卡就不该有窗口（窗口 id 就是根卡 id）');
+  assert.deepEqual(after, [container,loose].sort(), '窗口资格独立于树上父节点');
   assertInvariantW(session.state, '拖进容器之后', after);
 });
 
@@ -205,16 +205,10 @@ test('关窗之后删掉那张卡：openWindows 里的残留会被子集关系�
 
 // ── W′ 的护栏 ───────────────────────────────────────────────────────────────
 
-test('assertInvariantW 抓到"开着的窗口不是桌面卡片"', () => {
-  const session = makeBareSession();
-  const container = createCard(session, { parentId: null, title: '容器' });
-  const child = createCard(session, { parentId: container, title: '子卡' });
-
-  assert.throws(
-    () => assertInvariantW(session.state, '护栏', [container, child]),
-    /不是桌面卡片/,
-    '子卡有窗口就违反 W′',
-  );
+test('assertInvariantW accepts ancestor and descendant windows together',()=>{
+ const session=makeBareSession();const container=createCard(session,{parentId:null,title:'P'}),child=createCard(session,{parentId:container,title:'C'});
+ assert.doesNotThrow(()=>assertInvariantW(session.state,'windows',[container,child]));
+ assert.throws(()=>assertInvariantW(session.state,'windows',[container,'missing']),/不存在|已删除/);
 });
 
 test('assertInvariantW 抓到"开着的窗口已删除"', () => {
@@ -222,7 +216,7 @@ test('assertInvariantW 抓到"开着的窗口已删除"', () => {
   const root = createCard(session, { parentId: null, title: '根' });
   deleteCard(session, root);
 
-  assert.throws(() => assertInvariantW(session.state, '护栏', [root]), /不是桌面卡片/);
+  assert.throws(() => assertInvariantW(session.state, '护栏', [root]), /不存在|已删除/);
 });
 
 test('assertInvariantW 抓到"桌面卡片里有 main、openWindows 里却没有"', () => {
@@ -253,12 +247,12 @@ test('我已关掉的窗口，下次启动不再恢复', () => {
   assert.deepEqual(restorableWindows(session.state, openWindowsOf(view)), ['000', a].sort());
 });
 
-test('记着但已被拖进容器的卡不恢复（子集关系自动过滤）', () => {
+test('已展开的子卡仍可以恢复独立窗口', () => {
   const session = makeSessionWithMain();
   const container = createCard(session, { parentId: null, title: '容器' });
   const child = createCard(session, { parentId: container, title: '子卡' });
 
-  assert.deepEqual(restorableWindows(session.state, ['000', child]), ['000']);
+  assert.deepEqual(restorableWindows(session.state, ['000', child]), ['000',child].sort());
   void container;
 });
 

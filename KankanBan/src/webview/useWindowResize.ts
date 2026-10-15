@@ -1,3 +1,4 @@
+import {passedDragThreshold,swallowDragClick} from './pointer-gesture.ts';
 import {useEffect,useRef,type PointerEvent as ReactPointerEvent} from 'react';
 import {invoke} from '@tauri-apps/api/core';
 import {cursorPosition,getCurrentWindow} from '@tauri-apps/api/window';
@@ -13,14 +14,15 @@ export function useWindowResize(onError:(message:string)=>void) {
   const target=event.currentTarget,pointer=event.pointerId;target.setPointerCapture(pointer);
   document.documentElement.classList.add('resizing-note');
   const origin=Promise.all([cursorPosition(),getCurrentWindow().innerSize(),getCurrentWindow().scaleFactor()]);
-  let stopped=false,frame:number|null=null,running:Promise<void>=Promise.resolve(),busy=false,stopWatch=()=>{};
-  const apply=async(finish:boolean)=>{const [[mouse,size,scale],now]=await Promise.all([origin,cursorPosition()]);await invoke('resize_note',{width:(size.width+now.x-mouse.x)/scale,height:(size.height+now.y-mouse.y)/scale,finish});};
-  const move=()=>{if(stopped || busy || frame!==null)return;frame=requestAnimationFrame(()=>{frame=null;if(stopped)return;busy=true;running=apply(false).catch(error=>onError(String(error))).finally(()=>{busy=false;});});};
+  const start={clientX:event.clientX,clientY:event.clientY};
+  let started=false,stopped=false,frame:number|null=null,running:Promise<void>=Promise.resolve(),busy=false,stopWatch=()=>{};
+  const apply=async(finish:boolean)=>{const [[mouse,size,scale],now]=await Promise.all([origin,cursorPosition()]);await invoke('resize_note',{width:(size.width+now.x-mouse.x)/scale,height:(size.height+now.y-mouse.y)/scale,finish});if(finish)document.dispatchEvent(new CustomEvent('kkb:window-operation',{detail:{operation:'resize',size:await getCurrentWindow().innerSize()}}));};
+  const move=(event:PointerEvent)=>{if(event.pointerId!==pointer)return;if(!started){if(!passedDragThreshold(start,event))return;started=true;}if(stopped || busy || frame!==null)return;frame=requestAnimationFrame(()=>{frame=null;if(stopped)return;busy=true;running=apply(false).catch(error=>onError(String(error))).finally(()=>{busy=false;});});};
   const end=()=>{
    if(stopped)return;stopped=true;stopWatch();if(frame!==null)cancelAnimationFrame(frame);
    document.removeEventListener('pointermove',move);document.removeEventListener('pointercancel',end);document.documentElement.classList.remove('resizing-note');
    if(target.hasPointerCapture(pointer))target.releasePointerCapture(pointer);dispose.current=null;
-   void running.then(()=>apply(true)).catch(error=>onError(String(error)));
+   if(started){swallowDragClick();void running.then(()=>apply(true)).catch(error=>onError(String(error)));}
   };
   dispose.current=end;document.addEventListener('pointermove',move);document.addEventListener('pointercancel',end);
   stopWatch=watchDragRelease(target,pointer,event.buttons,end);

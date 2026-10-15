@@ -1,0 +1,2 @@
+.flow-image-caret { position:absolute; width:2px; min-height:16px; display:block; pointer-events:none; z-index:125; background:var(--palette-accent); }
+.flow-image-caret[hidden] { display:none; }

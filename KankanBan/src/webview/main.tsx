@@ -1,3 +1,4 @@
+import {cardIdFromLabel,windowIdFromLabel} from '../core/window-identity.ts';
 import {isSkin} from '../core/skins.ts';
 import {uiText} from '../i18n/text.ts';
 import { normalizeBoards } from '../core/boards.ts';
@@ -31,7 +32,7 @@ async function boot(): Promise<void> {
   const mount = document.getElementById('root')!;
   const native = isTauri();
   const label = currentWindowLabel() ?? 'main';
-  const mirror = label.startsWith('card-');
+  const mirror = windowIdFromLabel(label)!==null;
   document.documentElement.dataset.windowKind=mirror ? 'card' : 'manager';
   const buffer = createBufferedFs();
   let backend: AsyncFsOps;
@@ -74,9 +75,9 @@ async function boot(): Promise<void> {
   else controller.subscribe(() => { if (!controller.busy && !controller.error) {
     try { localStorage.setItem('kkb-preview-data', JSON.stringify(disk.snapshot())); } catch { /* browser quota, never desktop data */ }
   } });
-  createRoot(mount).render(<WorkspaceApp controller={controller} {...(mirror ? { cardId: label.slice(5) } : {})}
+  createRoot(mount).render(<WorkspaceApp controller={controller} {...(mirror ? { cardId: cardIdFromLabel(label)!, windowId:windowIdFromLabel(label)! } : {})}
     {...(desktop ? { request: desktop.request, startDrag: desktop.startDrag, close: desktop.close, switchWorkspace: desktop.switchWorkspace } : {})}
-    {...(native ? { git: () => invoke('git_summary') } : {})} />);
+    />);
   if (desktop && !mirror) await desktop.restore();
 }
 void boot().catch(error => {

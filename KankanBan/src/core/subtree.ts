@@ -1,4 +1,5 @@
 import {uiText} from '../i18n/text.ts';
+import {readCardImages} from './card-images.ts';
 /**
  * 子树收集与快照比对（ARCHITECTURE.md §2.7 软删除、§4.1 card_delete）。
  *
@@ -107,6 +108,8 @@ function canonical(value: unknown): unknown {
     for (const key of Object.keys(src).sort()) {
       // Legacy card snapshots omit the optional sync baseline; null means the same thing.
       if ((key === 'prefabBase' || key === 'doodle') && src[key] == null) continue;
+      if(key==='images' && Array.isArray(src[key]) && src[key].length===0)continue;
+      if(key==='images' && Array.isArray(src[key])){out[key]=canonical(readCardImages(src[key]));continue;}
       out[key] = canonical(src[key]);
     }
     return out;

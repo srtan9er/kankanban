@@ -21,6 +21,12 @@ use tauri::{Manager, Emitter};
 mod i18n;
 mod desktop;
 mod snap;
+mod mcp_bridge;
+mod mcp_config;
+mod capture;
+mod image_assets;
+mod git_ops;
+mod extension_service;
 
 fn path_of(raw: &str) -> PathBuf {
     PathBuf::from(raw)
@@ -122,7 +128,7 @@ fn spawn_card_window(app: &tauri::AppHandle, card_id: &str, focus: bool) -> Resu
         // （tao 的 WM_NCCALCSIZE 分支；系统深色模式下那条边是黑的）。
         .shadow(false)
         .focused(focus)
-        .always_on_top(true)
+        .always_on_top(false)
         .skip_taskbar(true)
         // 和便签一样固定尺寸：无装饰 + 无阴影时客户区铺满窗口，没有可抓的缩放边框。
         .resizable(false)
@@ -244,7 +250,7 @@ async fn open_card_window(app: tauri::AppHandle, window: tauri::WebviewWindow, c
     desktop::require_main(&window)?;
     spawn_card_window(&app, &card_id, false)?;
     if let Some(card_window) = app.get_webview_window(&label_of_card(&card_id)) {
-        desktop::set_note_mode(app.clone(), card_window.clone(), Some(false), Some(true)).await?;
+        desktop::set_note_mode(app.clone(), card_window.clone(), Some(false), None).await?;
         card_window.unminimize().map_err(|error| error.to_string())?;
         card_window.show().map_err(|error| error.to_string())?;
         card_window.emit("kkb:window-activated", serde_json::json!({"label":card_window.label()})).map_err(|error| error.to_string())?;
@@ -305,6 +311,8 @@ pub fn run() {
         })
         .manage(WindowState::default())
         .manage(desktop::DesktopState::default())
+        .manage(mcp_bridge::BridgeState::default())
+        .manage(std::sync::Arc::new(extension_service::ExtensionState::default()))
         .invoke_handler(tauri::generate_handler![
             fs_exists,
             fs_read_file,
@@ -320,6 +328,19 @@ pub fn run() {
             open_card_window,
             close_card_window,
             sync_card_windows,
+            capture::capture_app_window,
+            capture::emit_window_inspection,
+            image_assets::import_image_assets,
+            image_assets::read_image_asset,
+            image_assets::read_image_preview,
+            image_assets::verify_image_assets,
+            image_assets::save_share_package,
+            image_assets::pick_share_package,
+            mcp_bridge::mcp_bridge_start,
+            mcp_config::mcp_connection_config,
+            mcp_bridge::mcp_bridge_claim,
+            mcp_bridge::mcp_bridge_reply,
+            mcp_bridge::mcp_bridge_active,
             desktop::finish_exit,
             desktop::reload_workspace,
             desktop::window_preferences,
@@ -331,7 +352,9 @@ pub fn run() {
             desktop::window_at_point,
             desktop::position_card_window,
             desktop::open_link,
-            desktop::git_summary,
+            extension_service::extension_control,
+            extension_service::extension_start,
+            extension_service::extension_job,
             desktop::select_workspace,
             desktop::choose_workspace_folder,
         ])
@@ -345,6 +368,7 @@ pub fn run() {
             // 在里面再去关别的窗口容易和关窗流程互相纠缠；Destroyed 时 main 已经关完了。
             if matches!(event, tauri::WindowEvent::Destroyed) && window.label() == MAIN_LABEL {
                 let app = window.app_handle();
+                desktop::release(app);
                 for label in card_labels_of(app) {
                     if let Some(card_window) = app.get_webview_window(&label) {
                         let _ = card_window.close();

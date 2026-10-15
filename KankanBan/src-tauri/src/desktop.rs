@@ -79,12 +79,13 @@ pub async fn choose_workspace_folder(app: tauri::AppHandle, window: tauri::Webvi
     }).await.map_err(|e| e.to_string())?
 }
 #[tauri::command]
-pub async fn select_workspace(app: tauri::AppHandle, window: tauri::WebviewWindow, path: Option<String>) -> Result<(), String> {
+pub async fn select_workspace(app: tauri::AppHandle, window: tauri::WebviewWindow, path: Option<String>, check_only: Option<bool>) -> Result<(), String> {
     require_main(&window)?;
     let base = app_dir(&app)?;
     let path = match path { Some(value) => PathBuf::from(value.trim()), None => { let value=base.join("workspace");fs::create_dir_all(&value).map_err(|e|e.to_string())?;value } };
     if !path.is_absolute() || !path.is_dir() { return Err(crate::i18n::text("native/desktop.text002", &[]).into()); }
     let path = path.canonicalize().map_err(|e| e.to_string())?;
+    if check_only.unwrap_or(false) {return Ok(());}
     let base = app_dir(&app)?;
     let tmp = base.join("workspace-path.tmp");
     fs::write(&tmp, display_path(&path)).map_err(|e| e.to_string())?;
@@ -149,7 +150,7 @@ fn copy_directory(from: &std::path::Path, to: &std::path::Path) -> Result<(), St
     fs::create_dir(to).map_err(|e| e.to_string())?;
     for item in fs::read_dir(from).map_err(|e| e.to_string())? {
         let item = item.map_err(|e| e.to_string())?;
-        if from.file_name().and_then(|name| name.to_str()) == Some(".kkb") && (item.file_name() == "backups" || item.file_name() == "writer.lock") { continue; }
+        if from.file_name().and_then(|name| name.to_str()) == Some(".kkb") && (item.file_name() == "backups" || item.file_name() == "writer.lock" || item.file_name() == "mcp-bridge.json" || item.file_name() == "mcp-bridge.tmp") { continue; }
         let kind = item.file_type().map_err(|e| e.to_string())?;
         if kind.is_symlink() { return Err("备份源包含符号链接".into()); }
         if kind.is_dir() { copy_directory(&item.path(), &to.join(item.file_name()))?; }
@@ -166,6 +167,7 @@ fn process_alive(pid: u32) -> bool {
 fn process_alive(pid: u32) -> bool { std::path::Path::new(&format!("/proc/{pid}")).exists() }
 
 pub fn release(app: &tauri::AppHandle) {
+    crate::mcp_bridge::stop(app);
     if let Ok(mut stored) = app.state::<DesktopState>().root.lock() {
         if let Some(root) = stored.take() { let lock = root.join(".kkb/writer.lock"); let _ = fs::remove_file(lock.join("pid")); let _ = fs::remove_dir(lock); }
     }
@@ -177,7 +179,7 @@ pub fn save_window(app: &tauri::AppHandle, window: &tauri::WebviewWindow) {
     let (Ok(position), Ok(size)) = (window.outer_position(), window.inner_size()) else { return; };
     let scale = window.scale_factor().unwrap_or(1.0);
     let Ok(mut prefs) = state.prefs.lock() else { return; };
-    let value = prefs.entry(window.label().to_owned()).or_insert(WindowPrefs { x: position.x, y: position.y, width: size.width as f64 / scale, height: size.height as f64 / scale, collapsed: false, pinned: window.label() != "main" });
+    let value = prefs.entry(window.label().to_owned()).or_insert(WindowPrefs { x: position.x, y: position.y, width: size.width as f64 / scale, height: size.height as f64 / scale, collapsed: false, pinned: false });
     value.x = position.x; value.y = position.y;
     if !value.collapsed { value.width = size.width as f64 / scale; value.height = size.height as f64 / scale; }
     if let Ok(bytes) = serde_json::to_vec_pretty(&*prefs) {
@@ -295,7 +297,7 @@ pub async fn position_card_window(app: tauri::AppHandle, card_id: String, x: f64
     let w = app.get_webview_window(&format!("card-{card_id}")).ok_or("窗口尚未打开")?;
     w.set_position(PhysicalPosition::new(x as i32, y as i32)).map_err(|e| e.to_string())?; save_window(&app, &w); Ok(())
 }
-fn command(program: &str) -> Command {
+pub(crate) fn command(program: &str) -> Command {
     let mut c = Command::new(program);
     #[cfg(windows)] { use std::os::windows::process::CommandExt; c.creation_flags(0x08000000); }
     c
@@ -307,14 +309,6 @@ pub async fn open_link(url: String) -> Result<(), String> {
     #[cfg(not(windows))] { command("xdg-open").arg(&url).spawn().map_err(|e| e.to_string())?; }
     Ok(())
 }
-#[tauri::command]
-pub async fn git_summary(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
-    let path = root(&app)?;
-    let run = |args: &[&str]| -> Result<String,String> { let out = command("git").current_dir(&path).args(args).output().map_err(|e| crate::i18n::text("native/desktop.text007", &[("arg0", format!("{}", e))]))?;
-        if !out.status.success() { return Err(String::from_utf8_lossy(&out.stderr).to_string()); } Ok(String::from_utf8_lossy(&out.stdout).trim().to_owned()) };
-    Ok(serde_json::json!({"branch": run(&["branch", "--show-current"] )?, "status": run(&["status", "--short"] )?, "history": run(&["log", "-15", "--oneline"]).unwrap_or_default()}))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

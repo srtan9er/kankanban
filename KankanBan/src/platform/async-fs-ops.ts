@@ -63,7 +63,7 @@ export async function hydrate(memory: MemoryFs, backend: AsyncFsOps, dir: string
 
   for (const name of await backend.readDir(dir)) {
     // Host-only metadata and backups must not enter the live card filesystem.
-    if (dir.endsWith('/.kkb') && ['backups','writer.lock','window-prefs.json','window-prefs.tmp'].includes(name)) continue;
+    if (dir.replaceAll('\\','/').endsWith('/.kkb') && ['assets','backups','writer.lock','window-prefs.json','window-prefs.tmp','mcp-bridge.json','mcp-bridge.tmp'].includes(name)) continue;
     const child = `${dir}/${name}`;
     // 判断是文件还是目录：后端没有 stat，用"能不能 readDir"来试。
     // 比让每个平台各自实现 stat 更省事，且这里只跑一次。

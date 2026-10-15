@@ -2,7 +2,7 @@ import {watchDragRelease} from './drag-release.ts';
 import {registerEditor} from './drafts.ts';
 import {useEffect,useRef,useState,type PointerEvent as ReactPointerEvent,type RefObject} from 'react';
 import {uiText} from '../i18n/text.ts';
-import {emptyInk,hitInk,mergeInk,type InkDocument,type InkColor,type InkStroke} from '../core/drawing.ts';
+import {emptyInk,hitInk,mergeInk,PENCIL_COLOR,PENCIL_WIDTH,type InkDocument,type InkStroke} from '../core/drawing.ts';
 
 export function InkPicture({document,width=document.width,height=document.height}:{document:InkDocument;width?:number;height?:number}) {
  return <svg className="ink-picture" viewBox={`0 0 ${width} ${height}`} aria-hidden="true">
@@ -15,7 +15,7 @@ const deferredInk=(previous:InkSnapshot,map:(document:InkDocument)=>InkDocument)
  let cached:InkDocument|undefined;return {read:()=>cached ??=map(previous.read())};
 };
 export function useInk(initial:InkDocument,onCommit?:((next:InkDocument,before:InkDocument)=>Promise<unknown>)) {
- const [document,setDocument]=useState(initial),[tool,setTool]=useState<'pen'|'eraser'>('pen'),[color,setColor]=useState<InkColor>('text'),[width,setWidth]=useState(3),[error,setError]=useState('');
+ const [document,setDocument]=useState(initial),[tool,setTool]=useState<'pen'|'eraser'>('pen'),[error,setError]=useState('');
  const acknowledged=useRef(initial);
  const current=useRef(initial),active=useRef<{id:number;before:InkDocument;stroke:InkStroke;tool:'pen'|'eraser';target:Element;stop?:()=>void;onActive?:((value:boolean)=>void)|undefined}|null>(null);
  const past=useRef<InkSnapshot[]>([]),future=useRef<InkSnapshot[]>([]),writes=useRef<Promise<unknown>>(Promise.resolve()),pending=useRef(0);
@@ -46,7 +46,7 @@ export function useInk(initial:InkDocument,onCommit?:((next:InkDocument,before:I
  const handlers=(point:(e:ReactPointerEvent)=>{x:number;y:number},onActive:((value:boolean)=>void)|undefined=undefined,button=0)=>({
   onPointerDown:(e:ReactPointerEvent)=>{
    if(e.button!==button)return;e.preventDefault();e.stopPropagation();e.currentTarget.setPointerCapture(e.pointerId);
-   const at=point(e),p={x:Math.round(at.x*100)/100,y:Math.round(at.y*100)/100},before=current.current,stroke:InkStroke={id:crypto.randomUUID(),color,width,points:[p,{x:p.x+.01,y:p.y+.01}]};
+   const at=point(e),p={x:Math.round(at.x*100)/100,y:Math.round(at.y*100)/100},before=current.current,stroke:InkStroke={id:crypto.randomUUID(),color:PENCIL_COLOR,width:PENCIL_WIDTH,points:[p,{x:p.x+.01,y:p.y+.01}]};
    active.current={id:e.pointerId,before,stroke,tool,target:e.currentTarget,onActive};
    active.current.stop=watchDragRelease(e.currentTarget,e.pointerId,e.buttons,finish);onActive?.(true);
    show(tool==='pen'?{...before,strokes:[...before.strokes,stroke]}:{...before,strokes:before.strokes.filter(s=>!hitInk(s,p,10))});
@@ -63,7 +63,7 @@ export function useInk(initial:InkDocument,onCommit?:((next:InkDocument,before:I
   onLostPointerCapture:finish,
  });
  const rebase=(map:(doc:InkDocument)=>InkDocument)=>{const before=current.current,oldPast=past.current,oldFuture=future.current,oldAcknowledged=acknowledged.current;acknowledged.current=map(acknowledged.current);show(map(before));past.current=past.current.map(doc=>deferredInk(doc,map));future.current=future.current.map(doc=>deferredInk(doc,map));return()=>{show(before);past.current=oldPast;future.current=oldFuture;acknowledged.current=oldAcknowledged;};};
- return {getDocument:()=>current.current,retry:()=>save(current.current,acknowledged.current),document,tool,setTool,color,setColor,width,setWidth,undo,redo,canUndo:past.current.length>0,canRedo:future.current.length>0,handlers,rebase,error,flush:()=>{finish();return writes.current;},isBusy:()=>!!active.current || pending.current>0,revision};
+ return {getDocument:()=>current.current,retry:()=>save(current.current,acknowledged.current),document,tool,setTool,undo,redo,canUndo:past.current.length>0,canRedo:future.current.length>0,handlers,rebase,error,flush:()=>{finish();return writes.current;},isBusy:()=>!!active.current || pending.current>0,revision};
 }
 export type InkController=ReturnType<typeof useInk>;
 export type DoodleTool='pen'|'eraser'|null;

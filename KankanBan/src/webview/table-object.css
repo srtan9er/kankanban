@@ -1,0 +1,71 @@
+.table-object { position:relative; }
+.editable-table { border-spacing:0; table-layout:fixed; margin:0; font-size:13px; font-weight:400; }
+.editable-table th,.editable-table td { padding:0; border:0; border-right:1px solid var(--line); border-bottom:1px solid var(--line); vertical-align:top; font-weight:inherit; }
+.editable-table { border-left:1px solid var(--line); border-top:1px solid var(--line); }
+.editable-table th { font-weight:600; }
+.table-cell-content { padding:4px 6px; overflow:clip; box-sizing:border-box; }
+.table-cell-content .rich-text-paragraph { margin:0; }
+.editable-table [data-cell-selected=true] { background:color-mix(in srgb,var(--palette-accent) 10%,transparent); }
+#root .table-cell-editor { display:block; width:100%; height:100%; min-height:0; border:0; outline:1px solid var(--palette-accent); padding:0; margin:0; resize:none; background:transparent; color:inherit; font:inherit; line-height:1.6; }
+.table-track-grip { position:absolute; z-index:8; touch-action:none; }
+.table-column-grip { top:0; width:6px; }
+.table-row-grip { left:0; height:6px; }
+#root .table-column-grip { cursor:col-resize!important; }
+#root .table-row-grip { cursor:row-resize!important; }
+.table-track-grip:hover { background:color-mix(in srgb,var(--palette-accent) 25%,transparent); }
+.table-tools { position:absolute; top:3px; left:3px; max-width:calc(100% - 32px); z-index:125; pointer-events:auto; border:1px solid var(--line); border-radius:4px; background:var(--surface); box-shadow:var(--shadow); padding:2px; }
+.table-tool-buttons { display:flex; gap:2px; }
+#root .table-tool-buttons button { position:static; inset:auto; display:grid; place-items:center; width:24px; height:24px; min-height:24px; min-width:24px; padding:0; margin:0; }
+.table-tool-buttons svg { width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:1.4; }
+.table-error { position:absolute; left:0; bottom:0; z-index:120; color:var(--palette-danger); background:var(--surface); max-width:100%; font-size:11px; }
+.image-placement[data-object-type=table] { padding:0; }
+.image-placement[data-object-type=table] > .table-object { border-radius:var(--card-radius); }
+
+.table-floating-dock { flex:none; display:flex; align-items:center; flex-wrap:wrap; gap:6px; padding:4px 8px; border-bottom:1px solid var(--line); background:var(--surface); position:relative; z-index:15; }
+.table-floating-dock .table-tools { position:static; max-width:100%; box-shadow:none; }
+.table-floating-dock .table-layout-tools { display:flex; align-items:center; gap:4px; }
+.table-floating-dock .image-layout-toolbar { position:static; inset:auto; box-shadow:none; max-width:100%; }
+#root .table-floating-dock .image-remove { position:static; inset:auto; display:grid; place-items:center; width:24px; height:24px; min-width:24px; min-height:24px; padding:0; margin:0; border:0; }
+.table-floating-dock .image-remove svg { width:16px; height:16px; fill:none; stroke:currentColor; stroke-width:1.5; }
+#root .table-floating-dock .table-size-tool { position:static; inset:auto; width:18px; height:18px; flex:none; pointer-events:auto; }
+.card-body-region:has(> .ordinary-document) { overflow:hidden; }
+.ordinary-document { height:100%; display:flex; flex-direction:column; overflow:hidden; }
+.ordinary-document > .ordinary-content { flex:1; min-height:0; overflow:auto; }
+
+.table-surface { overflow:hidden; border-radius:var(--card-radius); }
+.table-surface > .editable-table { border-radius:var(--card-radius); }
+.table-edit-controls { outline:none; }
+
+.table-surface { position:relative; }
+.table-surface::after { content:''; position:absolute; inset:0; border:1px solid var(--line); border-radius:var(--card-radius); pointer-events:none; z-index:2; }
+
+.table-floating-dock[data-floating-object-tools] { position:absolute; width:max-content; padding:4px; border:1px solid var(--line); border-radius:4px; box-shadow:var(--shadow); z-index:1000002; }
+
+.table-floating-dock[data-floating-object-tools] { display:flex; flex-direction:column; align-items:flex-start; gap:4px; }
+.table-floating-dock .table-tools { border:0; padding:0; }
+.table-floating-dock .table-layout-tools { padding:0; }
+.table-edit-controls > .image-remove { position:absolute; right:3px; top:3px; }
+
+.table-floating-dock[data-floating-object-tools]:empty { display:none; }
+
+.table-floating-dock[data-floating-object-tools] { overflow:auto; overscroll-behavior:contain; }
+
+.table-axis-selectors { position:absolute; inset:0; border-radius:var(--card-radius); overflow:hidden; z-index:9; pointer-events:none; }
+#root .table-axis-select { position:absolute; display:block; min-width:0; min-height:0; margin:0; padding:0; border:0; border-radius:0; pointer-events:auto; }
+#root .table-row-select { width:6px; background:linear-gradient(to right,var(--line) 6px,transparent 6px); cursor:e-resize!important; }
+#root .table-column-select { height:6px; background:linear-gradient(to bottom,var(--line) 6px,transparent 6px); cursor:s-resize!important; }
+#root .table-axis-select:hover { background:var(--palette-accent); }
+
+.table-surface::before { content:""; position:absolute; inset:0; border-left:6px solid var(--line); border-top:6px solid var(--line); border-radius:var(--card-radius); pointer-events:none; z-index:4; }
+
+.table-flow-block { position:relative; margin:4px 0; }
+.table-flow-block > .image-placement { display:block; margin:0; vertical-align:top; }
+.rich-image-body.has-free-images .table-flow-block { margin:0; }
+.rich-image-body:has(.table-flow-block) { overflow-anchor:none; }
+
+#root .table-cell-editor { overflow:auto; scrollbar-width:auto; }
+#root .image-edit-controls > .table-collapse { position:absolute; top:3px; right:31px; width:24px; height:24px; min-width:24px; min-height:24px; margin:0; padding:0; border:0; display:grid; place-items:center; color:var(--muted); background:color-mix(in srgb,var(--surface) 88%,transparent); pointer-events:auto; }
+.table-collapse svg { width:16px; height:16px; fill:none; stroke:currentColor; stroke-width:1.5; }
+#root .table-collapsed-label { display:block; width:100%; height:26px; min-height:0; padding:0; margin:0; border:0; background:transparent; color:var(--palette-accent); text-align:left; font-weight:600; white-space:nowrap; }
+
+#root .image-edit-controls > .table-collapse { border-radius:calc(var(--card-radius) * .3); }

@@ -1,4 +1,5 @@
 import {validInk} from './drawing.ts';
+import {validCardImages,copyCardImages,readCardImages} from './card-images.ts';
 import {uiText} from '../i18n/text.ts';
 /**
  * 内存状态与事件应用（ARCHITECTURE.md §4.2 第 2 步、§4.3 重放一致性）。
@@ -39,6 +40,7 @@ export const SETTABLE_FIELDS: ReadonlySet<string> = new Set([
   'title',
   'content',
   'doodle',
+  'images',
   'type',
   'layout',
   'isPrefab',
@@ -55,7 +57,7 @@ export function fieldKeyOf(path: string): string {
   return path.startsWith('/') ? path.slice(1) : path;
 }
 
-type FieldKind = 'string' | 'string|null' | 'number' | 'boolean' | 'string[]' | 'ink|null';
+type FieldKind = 'string' | 'string|null' | 'number' | 'boolean' | 'string[]' | 'ink|null' | 'images';
 
 /**
  * 可写字段的**值类型**。
@@ -74,6 +76,7 @@ const FIELD_KINDS: Readonly<Record<string, FieldKind>> = {
   title: 'string',
   content: 'string',
   doodle: 'ink|null',
+  images:'images',
   createdBy: 'string',
   type: 'string|null',
   prefabRef: 'string|null',
@@ -87,6 +90,7 @@ const FIELD_KINDS: Readonly<Record<string, FieldKind>> = {
 
 const KIND_LABEL: Readonly<Record<FieldKind, string>> = {
   'ink|null':uiText('drawing.attributeType'),
+  images:uiText('images.attributeType'),
   string: uiText("core/state.text001"),
   'string|null': uiText("core/state.text002"),
   number: uiText("core/state.text003"),
@@ -107,6 +111,7 @@ export function assertFieldValue(path: string, value: unknown): void {
 
   const ok = ((): boolean => {
     switch (kind) {
+      case 'images':return validCardImages(value);
       case 'ink|null':return value===null || validInk(value);
       case 'string':
         return typeof value === 'string';
@@ -227,7 +232,7 @@ function applyOne(state: CoreState, event: CardEvent): CoreState {
   switch (event.type) {
     case 'card_create': {
       const cards = new Map(state.cards);
-      cards.set(event.cardId, event.fields);
+      cards.set(event.cardId, event.fields.images===undefined?event.fields:{...event.fields,images:readCardImages(event.fields.images)});
 
       if (event.parentId === null || event.entry === null) {
         return { cards, children: state.children, lastAppliedSeq };
@@ -260,7 +265,8 @@ function applyOne(state: CoreState, event: CardEvent): CoreState {
         throw new Error(uiText("core/state.text010", {arg0: (event.path)}));
       }
       // 类型也要看：写侧放进去一个读侧不认的值，等于把工作区写死（见 `FIELD_KINDS` 的注释）
-      assertFieldValue(event.path, event.to);
+      const value=key==='images'?readCardImages(event.to):event.to;
+      assertFieldValue(event.path, value);
 
       const prev = state.cards.get(event.cardId);
       if (prev === undefined) {
@@ -269,7 +275,7 @@ function applyOne(state: CoreState, event: CardEvent): CoreState {
 
       const cards = new Map(state.cards);
       // 计算键名的展开会被 TS 放宽成索引签名，这里显式收回 CardFields。
-      cards.set(event.cardId, { ...prev, [key]: event.to } as CardFields);
+      cards.set(event.cardId, { ...prev, [key]: key==='images'?copyCardImages(value as NonNullable<CardFields['images']>):value } as CardFields);
       return { cards, children: state.children, lastAppliedSeq };
     }
 

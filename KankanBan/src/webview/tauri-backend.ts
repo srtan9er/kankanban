@@ -1,3 +1,4 @@
+import {cardWindowService} from './card-window-service.ts';
 /**
  * webview 侧的平台后端 —— 把 `AsyncFsOps` 建在 Tauri 的 IPC 上。
  *
@@ -56,15 +57,15 @@ export function currentWindowLabel(): string | null {
  * 一扇窗开不出来不该让整次操作失败，用户应该看到"3 扇开了，第 4 扇失败：…"。
  */
 export function syncCardWindows(wanted: readonly CardId[]): Promise<string[]> {
-  return invoke<string[]>('sync_card_windows', { wanted });
+  return cardWindowService().sync(wanted);
 }
 
 /** 当前真实存在的卡片窗口标签（对账用：内存里以为开着的可能早被用户关掉了）。 */
 export function cardWindowLabels(): Promise<string[]> {
-  return invoke<string[]>('card_window_labels');
+  return cardWindowService().labels();
 }
 
 /** 关掉一张卡片的窗口。**只关窗口，不碰树**。 */
 export function closeCardWindow(cardId: CardId): Promise<void> {
-  return invoke<void>('close_card_window', { cardId });
+  return cardWindowService().close(cardId);
 }

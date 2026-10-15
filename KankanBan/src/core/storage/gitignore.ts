@@ -20,10 +20,13 @@ const NEEDLE = '.kkb/';
 
 /** 这一行是否已经忽略了 `.kkb`（容忍用户自己写成 `.kkb` 或 `/.kkb`）。 */
 function alreadyIgnored(text: string): boolean {
-  return text.split('\n').some((line) => {
+  let ignored=false;
+  for(const line of text.split('\n')){
     const trimmed = line.trim().replace(/^\//, '');
-    return trimmed === '.kkb' || trimmed === NEEDLE;
-  });
+    if(trimmed === '.kkb' || trimmed === NEEDLE)ignored=true;
+    if(trimmed === '!.kkb' || trimmed === '!/.kkb' || trimmed === '!.kkb/' || trimmed === '!/.kkb/')ignored=false;
+  }
+  return ignored;
 }
 
 /**

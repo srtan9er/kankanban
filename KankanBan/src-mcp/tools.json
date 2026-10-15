@@ -1,0 +1,789 @@
+{
+  "version": "0.0.0+1",
+  "tools": [
+    {
+      "name": "identify_actor",
+      "title": "声明 AI 署名",
+      "description": "连接后首先填写稳定 id 和显示 name；同一 AI 应使用同一 id，不同 AI 使用不同 id。身份是自行声明的署名，不是账号认证。更换身份会清除阅读凭据。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "read_operations",
+      "title": "阅读其他参与者的操作",
+      "description": "首次读取全部非本 AI 的协作变更，之后按已确认进度读取新增部分。窗口位置、焦点、滚动、展开折叠等个人浏览状态不进入阅读范围。连续正文和标题自动保存合并为一条协作编辑；读取后该条记录固定，后续内容修改仍须重新读取。删除、树位置移动与同步单独记录。每页最多覆盖 100 条协作记录；有 nextCursor 时继续传 cursor，直到获得 reviewToken。实际阅读后调用 ack_operations 确认。all=true 从头回顾，details=true 展开协作记录细节。不能自动重试被拒绝的旧动作。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "cursor": {
+            "type": "string"
+          },
+          "all": {
+            "type": "boolean"
+          },
+          "details": {
+            "type": "boolean"
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "ack_operations",
+      "title": "确认已收到操作记录",
+      "description": "确认本连接最后完整分页读取的记录；仅在实际收到并阅读后调用。阅读进度按 AI 身份与工作区保存。未完整分页不会得到新凭据，不能确认。确认旧范围不会跳过后来新增的操作，也不会自动重试任何写入。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "get_doodle",
+      "title": "读取卡片涂鸦",
+      "description": "读取笔迹 ID、主题颜色、线宽、文档坐标与画布附属组。坐标不是屏幕像素，可先 inspect_window 获取绘图区域。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "cardId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "cardId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "add_doodle_strokes",
+      "title": "添加涂鸦笔迹",
+      "description": "追加折线笔迹，不覆盖已有涂鸦。points 使用正文文档或灵感台平面坐标；与界面铅笔共用文字色和 3px 线宽，不能自定义笔迹样式。每笔自动分配 ID，并通过共享事务保存。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "cardId": {
+            "type": "string"
+          },
+          "width": {
+            "type": "number"
+          },
+          "height": {
+            "type": "number"
+          },
+          "strokes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "points": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "x": {
+                        "type": "number"
+                      },
+                      "y": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "x",
+                      "y"
+                    ]
+                  }
+                }
+              },
+              "required": [
+                "points"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "cardId",
+          "strokes"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "remove_doodle_strokes",
+      "title": "擦除指定笔迹",
+      "description": "按 strokeIds 擦除整笔，保留其他笔迹，支持撤销。先 get_doodle 获取 ID。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "cardId": {
+            "type": "string"
+          },
+          "strokeIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "cardId",
+          "strokeIds"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "clear_doodle",
+      "title": "清空卡片涂鸦",
+      "description": "清空这张卡片的所有笔迹，正文和子卡不变，操作可撤销。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "cardId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "cardId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "get_card_location",
+      "title": "查询卡片树上位置",
+      "description": "返回直接父卡、当前顺序、祖先路径和画布坐标。独立开窗不改变此位置。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "cardId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "cardId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "reorder_card",
+      "title": "调整子卡顺序",
+      "description": "将卡片放到同一父卡下的最终 index 位置，从 0 开始；不改变父卡，不复制实例。根卡没有列表顺序。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "cardId": {
+            "type": "string"
+          },
+          "index": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "cardId",
+          "index"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "move_card_in_canvas",
+      "title": "移动画布卡片",
+      "description": "指定父画布与平面 x/y，可指定 width/height。使用界面相同的碰撞避让和预制体规则，可能生成实例，返回其 ID。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "cardId": {
+            "type": "string"
+          },
+          "parentId": {
+            "type": "string"
+          },
+          "x": {
+            "type": "number"
+          },
+          "y": {
+            "type": "number"
+          },
+          "width": {
+            "type": "number"
+          },
+          "height": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "cardId",
+          "parentId",
+          "x",
+          "y"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "sync_prefab",
+      "title": "同步预制体修改",
+      "description": "target=prefab 将实例积累修改同步到预制体；target=all 同步预制体及所有实例。包含结构、布局与涂鸦。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "cardId": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string",
+            "enum": [
+              "prefab",
+              "all"
+            ]
+          }
+        },
+        "required": [
+          "cardId",
+          "target"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "get_workspace",
+      "title": "查询当前工作区",
+      "description": "返回主窗口当前真实工作区路径，不修改设置。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "switch_workspace",
+      "title": "切换工作区",
+      "description": "保存所有窗口草稿后安排切换到已存在的绝对路径；path=null 回到默认工作区。回复 scheduled 表示已接受，界面重新加载后用 get_workspace 确认。不会删除旧数据。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "list_windows",
+      "title": "列出应用窗口",
+      "description": "仅列出 KankanBan 管理器和卡片窗口的标签、位置、尺寸与当前显示卡片。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "open_card_window",
+      "title": "在桌面展开卡片",
+      "description": "每次新建一个独立卡片窗口并聚焦，保留树上父子关系和已有窗口，不强制置顶。返回新窗口的 windowLabel。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "cardId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "cardId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "close_card_window",
+      "title": "收起卡片窗口",
+      "description": "关闭指定卡片的一个独立窗口，不删除卡片，不关闭管理器。优先关闭旧的默认窗口，否则关闭列表中的第一个窗口；返回被关闭窗口的 windowLabel。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "cardId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "cardId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "capture_window",
+      "title": "截图应用窗口",
+      "description": "捕获指定 KankanBan 窗口的实际 WebView 内容并返回 PNG 图片。windowLabel 默认 main；先 list_windows 查询标签。不会捕获其他应用。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "windowLabel": {
+            "type": "string"
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "inspect_window",
+      "title": "查询窗口与绘图几何",
+      "description": "返回应用窗口当前卡片、可见正文或画布区域、滚动偏移、绘图坐标及缩放/平移，配合 capture_window 和涂鸦工具定位。windowLabel 默认 main。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "windowLabel": {
+            "type": "string"
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "create_card",
+      "title": "建卡",
+      "description": "新建一张卡片。不传 parentId 则建成根卡（也就是一个独立窗口）；传 parentId 则挂在它下面。layout 决定这张卡将来怎么组织自己的子卡，普通卡用默认值即可。返回新建的卡片。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "卡片标题（纯文本）"
+          },
+          "content": {
+            "type": "string",
+            "description": "Markdown 正文，可省略"
+          },
+          "parentId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "父卡 id；省略或 null 表示建成根卡"
+          },
+          "layout": {
+            "type": "string",
+            "enum": [
+              "columns",
+              "ordered",
+              "grid",
+              "library",
+              "plane",
+              "plain"
+            ],
+            "description": "呈现方式，默认 plain"
+          },
+          "type": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "呈现定义卡的 id"
+          },
+          "isPrefab": {
+            "type": "boolean",
+            "description": "是否为预制体（仅 003 子树内为真）"
+          },
+          "plane": {
+            "type": "object",
+            "description": "父卡是 plane 布局时必填：{ x, y, w, h, z }",
+            "properties": {
+              "x": {
+                "type": "number"
+              },
+              "y": {
+                "type": "number"
+              },
+              "w": {
+                "type": "number"
+              },
+              "h": {
+                "type": "number"
+              },
+              "z": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "x",
+              "y",
+              "w",
+              "h",
+              "z"
+            ]
+          }
+        },
+        "required": [
+          "title"
+        ]
+      }
+    },
+    {
+      "name": "instantiate_prefab",
+      "title": "实例化预制体",
+      "description": "复制预制体及整棵子树，本体保留在预制体库；实例字段可覆盖。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "cardId": {
+            "type": "string",
+            "description": "卡片 id"
+          },
+          "parentId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "cardId"
+        ]
+      }
+    },
+    {
+      "name": "detach_prefab",
+      "title": "解除预制体关联",
+      "description": "保留实例内容与子树，整棵实例独立为普通卡片。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "cardId": {
+            "type": "string",
+            "description": "卡片 id"
+          }
+        },
+        "required": [
+          "cardId"
+        ]
+      }
+    },
+    {
+      "name": "use_presentation",
+      "title": "引用呈现方式",
+      "description": "引用来源卡的布局，不复制内容；sourceId 为 null 时解除引用并保留当前布局。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "cardId": {
+            "type": "string",
+            "description": "卡片 id"
+          },
+          "sourceId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "cardId",
+          "sourceId"
+        ]
+      }
+    },
+    {
+      "name": "set_field",
+      "title": "改字段",
+      "description": "改一张卡的一个字段。path 是平铺路径，例如 /title、/content、/prefabRef。一次只改一个字段，这样每次改动都能被单独撤销。**`/id`、`/deleted`、`/layout` 不允许这样改** —— `/layout` 会连带重写子卡条目，请用 set_layout。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "cardId": {
+            "type": "string",
+            "description": "卡片 id"
+          },
+          "path": {
+            "type": "string",
+            "description": "字段路径，形如 /title"
+          },
+          "value": {
+            "description": "新值；可以是字符串、数字、布尔、null 或字符串数组"
+          }
+        },
+        "required": [
+          "cardId",
+          "path",
+          "value"
+        ]
+      }
+    },
+    {
+      "name": "set_layout",
+      "title": "改呈现方式",
+      "description": "改一张卡的呈现方式（layout）—— 它决定这张卡怎么组织自己的子卡：ordered/columns/grid 是顺序型，plain 无布局信息，plane 用坐标。**改它会连带重写子卡条目**，所以是独立工具而不是 set_field。改成 plane 时必须用 placements 逐个子卡给坐标（数量要对得上）。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "cardId": {
+            "type": "string",
+            "description": "卡片 id"
+          },
+          "layout": {
+            "type": "string",
+            "enum": [
+              "columns",
+              "ordered",
+              "grid",
+              "library",
+              "plane",
+              "plain"
+            ],
+            "description": "新的呈现方式"
+          },
+          "placements": {
+            "type": "array",
+            "description": "改成 plane 时的坐标，顺序与子卡一致",
+            "items": {
+              "type": "object",
+              "properties": {
+                "x": {
+                  "type": "number"
+                },
+                "y": {
+                  "type": "number"
+                },
+                "w": {
+                  "type": "number"
+                },
+                "h": {
+                  "type": "number"
+                },
+                "z": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "x",
+                "y",
+                "w",
+                "h",
+                "z"
+              ]
+            }
+          }
+        },
+        "required": [
+          "cardId",
+          "layout"
+        ]
+      }
+    },
+    {
+      "name": "move_card",
+      "title": "移卡",
+      "description": "把一张卡移到另一个父卡下面。toParentId 传 null 表示把它浮动到桌面（变成根卡，也就是一个独立窗口）。index 是插入位置，省略则放在末尾。不允许把卡移进自己的子树。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "cardId": {
+            "type": "string",
+            "description": "卡片 id"
+          },
+          "toParentId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "新父卡 id；null 表示浮动到桌面"
+          },
+          "index": {
+            "type": "number",
+            "description": "在新父卡里的插入下标，默认放到末尾"
+          },
+          "plane": {
+            "type": "object",
+            "description": "新父卡是 plane 布局时必填：{ x, y, w, h, z }",
+            "properties": {
+              "x": {
+                "type": "number"
+              },
+              "y": {
+                "type": "number"
+              },
+              "w": {
+                "type": "number"
+              },
+              "h": {
+                "type": "number"
+              },
+              "z": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "x",
+              "y",
+              "w",
+              "h",
+              "z"
+            ]
+          }
+        },
+        "required": [
+          "cardId",
+          "toParentId"
+        ]
+      }
+    },
+    {
+      "name": "delete_card",
+      "title": "删卡（级联）",
+      "description": "删除一张卡**连同它的整棵子树**，并返回将删除的卡片数。删除是软删除，可以撤销。删一列可能是几十张卡，所以先看 deletedCount 再决定。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "cardId": {
+            "type": "string",
+            "description": "卡片 id"
+          }
+        },
+        "required": [
+          "cardId"
+        ]
+      }
+    },
+    {
+      "name": "undo",
+      "title": "撤销",
+      "description": "撤销最后一次改动。返回 undone 表示是否真的撤销了东西（已经没得撤时为 false）。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "read_tree",
+      "title": "读树",
+      "description": "读卡片森林的根卡及其若干层子卡。默认只展 2 层，**深读必须显式给 maxDepth**，避免一次把整棵大树读进来。还有子卡但已到深度上限的节点会标记 truncated=true。scope 可以只看公有（看板/灵感台）或私有区域。结果分页，用 nextCursor 接着读。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "scope": {
+            "type": "string",
+            "enum": [
+              "public",
+              "private"
+            ],
+            "description": "只看公有或私有区域"
+          },
+          "maxDepth": {
+            "type": "number",
+            "description": "往下展几层，根算第 0 层，默认 2"
+          },
+          "cursor": {
+            "type": "string",
+            "description": "上一页返回的 nextCursor"
+          },
+          "limit": {
+            "type": "number",
+            "description": "最多返回几个根卡，默认 50"
+          }
+        }
+      }
+    },
+    {
+      "name": "read_card",
+      "title": "读卡",
+      "description": "读一张卡的全部字段，含 Markdown 正文。includeChildren 为真时连同它的子卡条目一起返回。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "cardId": {
+            "type": "string",
+            "description": "卡片 id"
+          },
+          "includeChildren": {
+            "type": "boolean",
+            "description": "是否连子卡条目一起返回"
+          }
+        },
+        "required": [
+          "cardId"
+        ]
+      }
+    },
+    {
+      "name": "list_children",
+      "title": "列子卡",
+      "description": "列一张卡的直接子卡条目（含各自的布局数据），支持分页。子卡很多时用 nextCursor 接着读。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "parentId": {
+            "type": "string",
+            "description": "卡片 id"
+          },
+          "cursor": {
+            "type": "string",
+            "description": "上一页返回的 nextCursor"
+          },
+          "limit": {
+            "type": "number",
+            "description": "本页最多几条，默认 50"
+          }
+        },
+        "required": [
+          "parentId"
+        ]
+      }
+    },
+    {
+      "name": "search",
+      "title": "搜索卡片",
+      "description": "按标题与正文做子串搜索（不区分大小写），不返回已删除的卡。结果分页，用 nextCursor 接着读。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "搜索词"
+          },
+          "cursor": {
+            "type": "string",
+            "description": "上一页返回的 nextCursor"
+          },
+          "limit": {
+            "type": "number",
+            "description": "最多返回几条，默认 50"
+          }
+        },
+        "required": [
+          "query"
+        ]
+      }
+    }
+  ]
+}

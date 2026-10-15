@@ -12,9 +12,12 @@
     "typecheck": "tsc --noEmit",
     "check": "npm run typecheck && npm test",
     "mcp": "node src/mcp/main.ts",
+    "mcp:agent": "node scripts/mcp-agent.mjs",
     "cli": "node src/cli/main.ts",
     "dev": "node scripts/dev.mjs",
     "build:web": "vite build",
+    "build:mcp": "node scripts/build-mcp.mjs",
+    "build:release-assets": "npm run build:mcp && npm run build:web",
     "tauri": "tauri",
     "app": "tauri dev",
     "app:build": "tauri build",
@@ -33,6 +36,7 @@
     "vite": "^8.3.0"
   },
   "dependencies": {
+    "@chenglou/pretext": "0.0.9",
     "@modelcontextprotocol/sdk": "^1.30.1",
     "@tauri-apps/api": "^2.11.1",
     "react": "^19.3.0",

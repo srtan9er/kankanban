@@ -5,9 +5,15 @@ export function insideMergeArea(rect: { left: number; top: number; right: number
 }
 
 export function onScrollbar(element: HTMLElement, x: number, y: number): boolean {
-  const rect = element.getBoundingClientRect();
-  return (element.offsetWidth - element.clientWidth > 6 && x >= rect.left + element.clientWidth) ||
-    (element.offsetHeight - element.clientHeight > 6 && y >= rect.top + element.clientHeight);
+  for(let current:HTMLElement|null=element;current;current=current.parentElement){
+    if(current.clientWidth<=0 || current.clientHeight<=0)continue;
+    const style=getComputedStyle(current),rect=current.getBoundingClientRect();
+    const left=rect.left+current.clientLeft,top=rect.top+current.clientTop;
+    const vertical=/^(auto|scroll)$/.test(style.overflowY || style.overflow) && current.scrollHeight>current.clientHeight && current.offsetWidth-current.clientWidth-current.clientLeft>6;
+    const horizontal=/^(auto|scroll)$/.test(style.overflowX || style.overflow) && current.scrollWidth>current.clientWidth && current.offsetHeight-current.clientHeight-current.clientTop>6;
+    if(x>=rect.left && x<=rect.right && y>=rect.top && y<=rect.bottom && ((vertical && x>=left+current.clientWidth) || (horizontal && y>=top+current.clientHeight)))return true;
+  }
+  return false;
 }
 
 

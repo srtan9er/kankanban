@@ -1,4 +1,8 @@
+import {ensureTables} from './table-markdown.ts';
 import {validInk,mergeInk,linkCanvasInk,projectInkCanvas,remapInkCards,type InkDocument} from './drawing.ts';
+import {validCardImages,copyCardImages,sameCardImages,type CardImage} from './card-images.ts';
+import {imageTagForImage,parseCardImages} from './image-markdown.ts';
+import {ensureImageNames,nextImageNumber} from './image-identity.ts';
 import {uiText} from '../i18n/text.ts';
 import {rememberPrefabBases,savePrefabBase,syncPrefab} from './prefab-sync.ts';
 import {rebasePlane,viewportPlane,type Point,type PlaneSize} from './plane-geometry.ts';
@@ -10,14 +14,16 @@ import { isBuiltin } from './builtins.ts';
 import { collectSubtree } from './subtree.ts';
 import { isBoard } from './renderer.ts';
 export type Action =
-  | { kind: 'create'; parent: string | null; title?: string; layout?: Layout; prefab?: boolean; x?: number; y?: number }
+  | { kind: 'create'; parent: string | null; title?: string; layout?: Layout; prefab?: boolean; x?: number; y?: number; content?:string|undefined;type?:string|null|undefined;plane?:PlanePlacement|undefined }
   | {kind:'doodle-update';id:string;document:InkDocument;before?:InkDocument}
-  | { kind: 'edit'; id: string; field: 'title' | 'content'; value: string }
-  | { kind: 'layout'; id: string; layout: Layout }
+  | {kind:'images-update';id:string;images:CardImage[];before?:CardImage[]}
+  | {kind:'images-append';id:string;images:CardImage[];beforeContent?:string|undefined;offset?:number|undefined}
+  | { kind: 'edit'; id: string; field: 'title' | 'content'; value: string;before?:string|undefined }
+  | { kind: 'layout'; id: string; layout: Layout;placements?:NonNullable<Parameters<typeof setLayout>[3]>['placements'] }
   | { kind: 'presentation'; id: string; source: string | null }
   | { kind: 'canvas-rebase'; parent: string; offset: Point; period: PlaneSize; viewport: PlaneSize }
   | { kind: 'canvas-drop'; id: string; parent: string; x: number; y: number; w?: number; h?: number;period?:PlaneSize }
-  | { kind: 'move'; id: string; parent: string | null; index: number; x?: number; y?: number }
+  | { kind: 'move'; id: string; parent: string | null; index: number; x?: number; y?: number;plane?:PlanePlacement|undefined }
   | { kind: 'instantiate'; id: string; parent: string | null; x?: number; y?: number }
   | { kind: 'prefab-sync'; id: string; target: 'prefab' | 'all' }
   | { kind: 'detach'; id: string }
@@ -77,21 +83,72 @@ function markPrefabTree(s:Session,id:string):void {
  setField(s,id,'/isPrefab',true);
  for(const child of s.state.children.get(id) ?? [])markPrefabTree(s,child.id);
 }
+/** Library drops copy ordinary trees, move templates, or sync instances without moving them. */
+function prefabDrop(s:Session,id:string,parent:string|null,index:number,at?:PlanePlacement):{createdId?:string}|undefined{
+ if(!inPrefabContext(s,parent))return undefined;
+ const source=s.state.cards.get(id);if(!source || source.deleted)throw new Error(uiText('core/actions.text005'));
+ if(source.prefabRef){syncPrefab(s,id,'prefab');return {};}
+ if(source.isPrefab)return undefined;
+ const {snapshot}=collectSubtree(s.state,id),copies=new Map<string,string>();
+ const copy=(sourceId:string,destination:string|null,position?:PlanePlacement):string=>{
+  const card=snapshot.cards[sourceId]!;
+  const created=createCard(s,{parentId:destination,title:card.title,content:card.content,images:card.images,doodle:card.doodle ?? null,layout:card.layout,type:card.type,isPrefab:true,plane:position ?? placement(s,destination)});
+  copies.set(sourceId,created);
+  for(const entry of snapshot.children[sourceId] ?? [])copy(entry.id,created,'x' in entry?entry:undefined);
+  return created;
+ };
+ const createdId=copy(id,parent,at);moveCard(s,createdId,parent,index,at);
+ for(const [original,created] of copies){
+  const card=snapshot.cards[original]!;
+  if(card.doodle)setField(s,created,'/doodle',remapInkCards(card.doodle,copies));
+  if(card.type && copies.has(card.type))setField(s,created,'/type',copies.get(card.type)!);
+ }
+ return {createdId};
+}
 
 function apply(s: Session, action: Exclude<Action, { kind: 'undo' }>): { createdId?: string } {
   switch (action.kind) {
+    case 'images-append': {
+      const card=s.state.cards.get(action.id);if(!card || card.deleted)throw new Error(uiText('core/actions.text005'));
+      if(!validCardImages(action.images))throw new Error(uiText('images.invalid'));
+      if(action.beforeContent!==undefined && card.content!==action.beforeContent)throw new Error(uiText('images.editConflict'));
+      const offset=action.offset ?? card.content.length;
+      if(!Number.isSafeInteger(offset) || offset<0 || offset>card.content.length)throw new Error(uiText('images.invalid'));
+      if(!action.images.length)return {};
+      // Keep historical references in undo, but let removed body images release index quota.
+      const referenced=new Set(parseCardImages(card.content).map(reference=>reference.assetId));
+      const images=copyCardImages((card.images ?? []).filter(image=>referenced.has(image.assetId))),known=new Set(images.map(image=>image.assetId));
+      for(const image of action.images)if(!known.has(image.assetId)){images.push({...image});known.add(image.assetId);}
+      if(!validCardImages(images))throw new Error(uiText('images.invalid'));
+      let nextName=nextImageNumber(card.content);
+      const left=card.content.slice(0,offset),right=card.content.slice(offset),references=action.images.map(image=>imageTagForImage(image,`image_${nextName++}`)).join('\n');
+      const content=left+(left && !left.endsWith('\n')?'\n':'')+references+(right && !right.startsWith('\n')?'\n':'')+right;
+      apply(s,{kind:'edit',id:action.id,field:'content',value:content,before:card.content});
+      apply(s,{kind:'images-update',id:action.id,images});
+      return {};
+    }
+    case 'images-update': {
+      const card=s.state.cards.get(action.id);if(!card || card.deleted)throw new Error(uiText('core/actions.text005'));
+      if(!validCardImages(action.images) || (action.before!==undefined && !validCardImages(action.before)))throw new Error(uiText('images.invalid'));
+      if(sameCardImages(card.images,action.images))return {};
+      if(action.before!==undefined && !sameCardImages(card.images,action.before))throw new Error(uiText('images.editConflict'));
+      setField(s,action.id,'/images',copyCardImages(action.images));
+      if(card.prefabRef && !card.overrides.includes('images'))setField(s,action.id,'/overrides',[...card.overrides,'images']);
+      return {};
+    }
     case 'create': {
       if (action.parent !== null && isBoard(s.state, action.parent)) throw new Error(uiText("core/actions.text001"));
       const inLibrary = inPrefabContext(s,action.parent);
-      const id = createCard(s, { parentId: action.parent, title: action.title?.trim() || undefined, content: '',
+      const id = createCard(s, { parentId: action.parent, title: action.title?.trim() || undefined, content: action.content ?? '',
         layout: action.layout ?? 'plain', isPrefab: inLibrary || action.prefab === true,
-        plane: placement(s, action.parent) });
+        plane: action.plane ?? placement(s, action.parent) });
       if (action.layout === 'columns') {
         for (const title of [uiText("core/actions.text002"), uiText("core/actions.text003"), uiText("core/actions.text004")]) createCard(s, { parentId: id, title, layout: 'ordered', isPrefab: inLibrary });
       }
+      if(action.type)apply(s,{kind:'presentation',id,source:action.type});
       if(action.parent !== null && s.state.cards.get(action.parent)?.layout === 'plane') {
         const entry=(s.state.children.get(action.parent) ?? []).find(e=>e.id===id) as PlaneEntry;
-        apply(s,{kind:'canvas-drop',id,parent:action.parent,x:action.x ?? entry.x,y:action.y ?? entry.y});
+        apply(s,{kind:'canvas-drop',id,parent:action.parent,x:action.x ?? entry.x,y:action.y ?? entry.y,w:entry.w,h:entry.h});
       }
       return { createdId: id };
     }
@@ -109,7 +166,8 @@ function apply(s: Session, action: Exclude<Action, { kind: 'undo' }>): { created
       const card = s.state.cards.get(action.id);
       if (!card || card.deleted) throw new Error(uiText("core/actions.text005"));
       if (card[action.field] === action.value) return {};
-      setField(s, action.id, `/${action.field}`, action.value);
+      if(action.before!==undefined && card[action.field]!==action.before)throw new Error(uiText('core/actions.editConflict'));
+      setField(s, action.id, `/${action.field}`, action.field==='content'?ensureTables(ensureImageNames(action.value,card.content)):action.value);
       if (card.prefabRef !== null && !card.overrides.includes(action.field)) {
         setField(s, action.id, '/overrides', [...card.overrides, action.field]);
       }
@@ -123,7 +181,7 @@ function apply(s: Session, action: Exclude<Action, { kind: 'undo' }>): { created
         throw new Error(uiText("core/actions.text007"));
       }
       if (card.type !== null) setField(s, action.id, '/type', null);
-      const placements = (s.state.children.get(action.id) ?? []).map((entry, i) => ({ id: entry.id,
+      const placements = action.placements ?? (s.state.children.get(action.id) ?? []).map((entry, i) => ({ id: entry.id,
         x: 32 + (i % 4) * 244, y: 32 + Math.floor(i / 4) * 144, w: 220, h: 120, z: i }));
       setLayout(s, action.id, action.layout, { placements });
       if (action.layout === 'columns' && (s.state.children.get(action.id)?.length ?? 0) === 0) {
@@ -172,6 +230,8 @@ function apply(s: Session, action: Exclude<Action, { kind: 'undo' }>): { created
       });
       const source=s.state.cards.get(action.id);
       if(!source || source.deleted || isBuiltin(action.id)) throw new Error(uiText("core/actions.text013"));
+      const special=prefabDrop(s,action.id,action.parent,entries.length,{x:action.x,y:action.y,w:action.w ?? 220,h:action.h ?? 120,z:entries.length});
+      if(special)return special;
       const rebased=rebasePlane(entries,action.id,{x:action.x,y:action.y},{width:action.w ?? 220,height:action.h ?? 120});
       const parentCard=s.state.cards.get(action.parent)!;const canvasInk=parentCard.doodle;
       if(canvasInk && (rebased.shift.x || rebased.shift.y)){const next={...canvasInk,strokes:canvasInk.strokes.map(stroke=>({...stroke,points:stroke.points.map(point=>({x:point.x+rebased.shift.x,y:point.y+rebased.shift.y}))}))};setField(s,action.parent,'/doodle',next);}
@@ -192,9 +252,11 @@ function apply(s: Session, action: Exclude<Action, { kind: 'undo' }>): { created
     }
     case 'move': {
       if (isBuiltin(action.id)) throw new Error(uiText("core/actions.text015"));
+      const special=prefabDrop(s,action.id,action.parent,action.index,action.plane ?? placement(s,action.parent,action.x,action.y));
+      if(special)return special;
       if(s.state.cards.get(action.id)?.isPrefab && s.state.cards.get(action.id)?.prefabRef===null && !inPrefabContext(s,action.parent)) {
         const result=apply(s,{kind:'instantiate',id:action.id,parent:action.parent,...(action.x===undefined?{}:{x:action.x}),...(action.y===undefined?{}:{y:action.y})});
-        moveCard(s,result.createdId!,action.parent,action.index,placement(s,action.parent,action.x,action.y));
+        moveCard(s,result.createdId!,action.parent,action.index,action.plane ?? placement(s,action.parent,action.x,action.y));
         return result;
       }
       moveCard(s, action.id, action.parent, action.index, placement(s, action.parent, action.x, action.y));
@@ -210,7 +272,7 @@ function apply(s: Session, action: Exclude<Action, { kind: 'undo' }>): { created
       const copies=new Map<string,string>();
       const copy = (sourceId: string, parent: string | null, at?: PlanePlacement): string => {
         const sourceCard = s.state.cards.get(sourceId)!;
-        const id = createCard(s, { parentId: parent, title: sourceCard.title, content: sourceCard.content,doodle:sourceCard.doodle ?? null,
+        const id = createCard(s, { parentId: parent, title: sourceCard.title, content: sourceCard.content,doodle:sourceCard.doodle ?? null,images:sourceCard.images,
           layout: sourceCard.layout, type: sourceCard.type, plane: at ?? placement(s, parent) });
         copies.set(sourceId,id);
         setField(s, id, '/prefabRef', sourceCard.prefabRef ?? sourceId);

@@ -1,0 +1,12 @@
+[package]
+name = "kankanban-mcp"
+version = "0.0.0+1"
+edition = "2021"
+rust-version = "1.88"
+
+[dependencies]
+serde_json = "1"
+
+[profile.release]
+opt-level = "s"
+strip = true

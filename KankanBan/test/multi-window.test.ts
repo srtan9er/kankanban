@@ -182,12 +182,12 @@ test('wantedCardWindows 去掉 main —— main 那扇窗口本身就是它', ()
   assert.deepEqual(wantedCardWindows(session.state, ['000', 'c1'], null), ['c1']);
 });
 
-test('wantedCardWindows 被子集关系过滤：已拖进容器的卡不再有窗口', () => {
+test('wantedCardWindows keeps independently expanded descendants', () => {
   const session = makeSession();
   runIntent(session, { kind: 'createCard', parentId: null, title: '容器' });
   runIntent(session, { kind: 'createCard', parentId: 'c1', title: '子' });
 
-  assert.deepEqual(wantedCardWindows(session.state, ['c1', 'c2'], null), ['c1']);
+  assert.deepEqual(wantedCardWindows(session.state, ['c1', 'c2'], null), ['c1','c2']);
 });
 
 // ── 启动分流：镜像由标签决定，不做任何决策 ───────────────────────────────────

@@ -3,8 +3,13 @@ import {emptyInk,type InkDocument} from '../core/drawing.ts';
 import type {Request} from './controller.ts';
 import {useInk,useDoodleMode,InkPill} from './Ink.tsx';
 import {registerEditor} from './drafts.ts';
+import {ViewportInkToolbar} from './ViewportInkToolbar.tsx';
 import {Markdown} from './Markdown.tsx';
-export function DrawingBody({id,content,doodle,placeholder,send,prepare}:{id:string;content:string;doodle?:InkDocument|null;placeholder?:string;send:(request:Request)=>Promise<unknown>;prepare?:()=>Promise<unknown>}) {
+import type {CardImage} from '../core/types.ts';
+import {useContext} from 'react';
+import {EditMode} from './edit-mode.ts';
+export function DrawingBody({id,content,images=[],doodle,placeholder,send,prepare}:{id:string;content:string;images?:CardImage[];doodle?:InkDocument|null;placeholder?:string;send:(request:Request)=>Promise<unknown>;prepare?:()=>Promise<unknown>}) {
+ const {editable}=useContext(EditMode);
  const host=useRef<HTMLDivElement>(null),seed=useRef(emptyInk('doodle',1,1)),extent=useRef({width:1,height:1});
  const [size,setSize]=useState({width:1,height:1,panel:1}),[paperHeight,setPaperHeight]=useState(0);
  const paper=useRef(0);
@@ -27,12 +32,12 @@ export function DrawingBody({id,content,doodle,placeholder,send,prepare}:{id:str
   if(!mode.mode){paper.current=0;element.style.minHeight=`${Math.max(size.panel,ink.document.height)}px`;setPaperHeight(0);}
   parent?.addEventListener('wheel',wheel,{passive:true});parent?.addEventListener('scroll',scroll,{passive:true});
   const observer=new ResizeObserver(measure);observer.observe(element);if(parent)observer.observe(parent);measure();return()=>{observer.disconnect();parent?.removeEventListener('wheel',wheel);parent?.removeEventListener('scroll',scroll);};
- },[content,mode.mode,ink.document.height,size.panel]);
+ },[content,images,mode.mode,ink.document.height,size.panel]);
  useEffect(()=>{const flush=(event:Event)=>registerEditor(event,ink.flush());document.addEventListener('kkb:prepare-close',flush);return()=>document.removeEventListener('kkb:prepare-close',flush);},[]);
  return <div ref={host} className="drawing-body doodle-body" onContextMenu={event=>{if(mode.mode || document.documentElement.dataset.doodleExiting){event.preventDefault();event.stopPropagation();}}} style={{minHeight:Math.max(size.panel,paperHeight,ink.document.height)} as CSSProperties}>
-  <div className="doodle-toolbar"><InkPill mode={mode.mode} toggle={mode.toggle}/></div>
+  {editable && <ViewportInkToolbar anchor={host}><InkPill mode={mode.mode} toggle={mode.toggle}/></ViewportInkToolbar>}
   {mode.mode && <div className="doodle-range" aria-hidden="true" style={{'--doodle-panel-height':`${size.panel}px`} as CSSProperties}/>}
-  <Markdown text={content} {...(placeholder===undefined?{}:{placeholder})}/>
+  <Markdown text={content} images={images} id={id} send={send} prepare={prepare} {...(placeholder===undefined?{}:{placeholder})}/>
   <svg className="doodle-layer" data-drawing-surface="true" data-active={mode.mode!==null} viewBox={`0 0 ${size.width} ${size.height}`} preserveAspectRatio="none" onContextMenu={event=>{if(mode.mode){event.preventDefault();event.stopPropagation();}}} {...ink.handlers(event=>{
    const svg=event.currentTarget as SVGSVGElement,matrix=svg.getScreenCTM();const p=new DOMPoint(event.clientX,event.clientY).matrixTransform(matrix?.inverse());return {x:p.x,y:p.y};
   },undefined,2)}>

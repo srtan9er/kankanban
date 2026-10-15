@@ -1,89 +1,77 @@
+import {connectDesktopDrag} from './desktop-drag.ts';
+import {cardIdFromLabel,windowIdFromLabel,windowAnchor,windowLabel} from '../core/window-identity.ts';
+import {connectWindowPositions} from './window-position-sync.ts';
+import {inspectLocalWindow} from './inspect-window.ts';
+import {shareAssetIds,buildSharePackage,parseSharePackage,MAX_SHARE_ASSETS,MAX_SHARE_BASE64} from '../core/share-package.ts';
+import type {CardImage} from '../core/card-images.ts';
+import {createDesktopMirror,serveDesktopRequests,DESKTOP_CHANNEL as CHANNEL} from './desktop-mirror.ts';
+import {validateToolCall} from '../mcp/tools.ts';
+import {getAllWindows} from '@tauri-apps/api/window';
+import {freshWindow,closeWindow} from '../core/view-state.ts';
+import {navigationTarget} from './navigation.ts';
+import {readCard} from '../core/workspace.ts';
 import {uiText} from '../i18n/text.ts';
-import {watchDragRelease} from './drag-release.ts';
-import {canvasBindings,canvasGesture,type CanvasDragAction} from '../core/canvas-drag.ts';
-import {canvasPick,dispatchCanvasDrag,CANVAS_WINDOW_SHIFT,type CanvasPick} from './canvas-events.ts';
-import { insideMergeArea, onScrollbar, dropPosition } from './drag-geometry.ts';
-import { isBoard } from '../core/renderer.ts';
-import { isInSubtree, parentIndexOf } from '../core/indexes.ts';
-import { dropIndex } from './drop-index.ts';
-import { emit, listen, type Event as TauriEvent } from '@tauri-apps/api/event';
+import {dispatchCanvasDrag,CANVAS_WINDOW_SHIFT} from './canvas-events.ts';
+import { emit, listen } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
-import { cursorPosition, getCurrentWindow } from '@tauri-apps/api/window';
-import type { PointerEvent as ReactPointerEvent } from 'react';
-import { WorkspaceController, type Request, type Snapshot } from './controller.ts';
-import { syncCardWindows } from './tauri-backend.ts';
-import { windowCards } from '../core/windows.ts';
+import { getCurrentWindow } from '@tauri-apps/api/window';
+import { WorkspaceController,READ_ONLY_MCP_TOOLS, type Request } from './controller.ts';
+import {cardWindowService,wantedDesktopViews} from './card-window-service.ts';
 import { prepareEditors } from './drafts.ts';
 
-type Reply = { token: string; to: string; snapshot?: Snapshot; result?: { createdId?: string }; error?: string };
-type Wire = { token: string; from: string; request: Request | null };
-type Drag = { id: string; source: string; target: string | null; x: number; y: number; screenX: number; screenY: number; phase: 'move' | 'drop' | 'cancel' | 'probe'; token?: string; pick?: CanvasPick; reparent?: boolean };
-const CHANNEL = 'kkb:v1';
 
+/** Composition root for desktop windows.
+ * Identity: core/window-identity; lifecycle commands: card-window-service.
+ * Mirror transport: desktop-mirror; native drags: desktop-drag.
+ * Position notifications: window-position-sync; main remains the sole writer.
+ * Native command names, event channels and stored view IDs are compatibility boundaries.
+ */
 export async function connectDesktop(c: WorkspaceController, label: string) {
   const main = label === 'main';
-  const pending = new Map<string, { resolve: (result: { createdId?: string }) => void; reject: (error: Error) => void; timeout: ReturnType<typeof setTimeout> }>();
+  const windows=cardWindowService();
+  const bus={emit,listen};
+  const mirror=main?null:createDesktopMirror(label,snapshot=>c.accept(snapshot),bus);
   const w = getCurrentWindow();
-  let remoteRevision = -1;
+  const diagnostics={incoming:0,replied:0,failed:0,requests:[] as {from:string;kind:string;stage:string;error?:string}[]};c.desktopDiagnostics=diagnostics;
   let closing = false;
+  let switching=false;
   let errorHandler = (message: string): void => { c.error = message; c.accept(c.snapshot()); };
-  const request = async (action: Request | null): Promise<{ createdId?: string }> => {
+  const request = async (action: Request | null,beforeExecute?:()=>Promise<void>): Promise<{ createdId?: string;createdWindowId?:string;toolResult?:unknown }> => {
     if (main) {
-      if (action && (action.kind === 'tutorial' || action.kind === 'close-all' || action.kind === 'float' || action.kind === 'move' || action.kind === 'canvas-drop' || action.kind === 'delete' || action.kind === 'prefab-sync' || action.kind === 'undo' || action.kind === 'window')) await prepareWindows();
+      if(action?.kind==='extension-job')return c.execute(action);
+      if (action && ((action.kind === 'mcp' && !READ_ONLY_MCP_TOOLS.has(action.tool)) || ['images-import','images-update','share-export','share-import'].includes(action.kind) || action.kind === 'tutorial' || action.kind === 'close-all' || action.kind === 'float' || action.kind === 'move' || action.kind === 'canvas-drop' || action.kind === 'delete' || action.kind === 'prefab-sync' || action.kind === 'undo' || action.kind === 'window')) await prepareWindows();
       if (action === null) await c.flush();
-      const result = action === null ? {} : await c.execute(action);
+      if(action?.kind==='mcp' && (switching || closing))throw new Error(uiText('native/mcpBridge.stopped'));
+      const result = action === null ? {} : await c.execute(action,action.kind==='mcp'?async()=>{if(switching || closing)throw new Error(uiText('native/mcpBridge.stopped'));await beforeExecute?.();}:undefined,desktopTool);
       await emit(`${CHANNEL}:snapshot`, c.snapshot());
-      const roots = new Set(windowCards(c.session.state));
-      const errors = await syncCardWindows(c.view.openWindows.filter(id => id !== '000' && roots.has(id)));
+      const errors = await windows.sync(wantedDesktopViews(c.session.state,c.view));
       if (errors.length) errorHandler(errors.join('；'));
-      if(action?.kind==='tutorial' && result.createdId)await invoke('open_card_window',{cardId:result.createdId});
-      if(action?.kind==='window' && action.open)await invoke('open_card_window',{cardId:action.id});
+      if(action?.kind==='tutorial' && result.createdWindowId)await windows.open(result.createdWindowId);
+      if(action?.kind==='float' && result.createdWindowId)await windows.open(result.createdWindowId);
+      if(action?.kind==='window' && action.open)await windows.open(action.id);
       return result;
     }
-    const token = crypto.randomUUID();
-    return new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => { pending.delete(token); reject(new Error(uiText("webview/desktop.text001"))); }, 12000);
-      pending.set(token, { resolve, reject, timeout });
-      void emit(`${CHANNEL}:request`, { token, from: label, request: action } satisfies Wire).catch(error => {
-        clearTimeout(timeout); pending.delete(token); reject(error);
-      });
-    });
+    return mirror!.request(action);
   };
   const unlisteners: (() => void)[] = [];
-  let lastWindowPosition = await w.outerPosition();
-  let windowScale = await w.scaleFactor();
-  let fixedCanvasDrag=false;
-  let dragGeneration=0;
-  let stopActiveDrag:(()=>Promise<void>)|null=null;
-  unlisteners.push(await w.onScaleChanged((event:TauriEvent<{scaleFactor:number}>) => {windowScale=event.payload.scaleFactor;}));
-  unlisteners.push(await w.onMoved((event:TauriEvent<{x:number;y:number}>) => {
-    const position=event.payload;
-    const delta={x:(position.x-lastWindowPosition.x)/windowScale,y:(position.y-lastWindowPosition.y)/windowScale};
-    lastWindowPosition=position;
-    if(!fixedCanvasDrag)document.dispatchEvent(new CustomEvent(CANVAS_WINDOW_SHIFT,{detail:delta}));
-  }));
+  if(mirror)unlisteners.push(()=>mirror.dispose());
+  const onWindowOperation=(event:Event)=>{void request({kind:'window-state',windowLabel:label,changes:(event as CustomEvent<Record<string,unknown>>).detail}).catch(error=>errorHandler(String(error)));};
+  document.addEventListener('kkb:window-operation',onWindowOperation);
+  unlisteners.push(()=>document.removeEventListener('kkb:window-operation',onWindowOperation));
+  const dragState={fixed:false};
+  const positionSync=await connectWindowPositions({label,window:w,bus,positions:c.windowPositions,fixed:()=>dragState.fixed,
+    shift:delta=>document.dispatchEvent(new CustomEvent(CANVAS_WINDOW_SHIFT,{detail:delta})),
+    notify:position=>document.dispatchEvent(new CustomEvent('kkb:card-window-position',{detail:position})),error:reason=>errorHandler(reason)});
+  unlisteners.push(()=>positionSync.dispose());
   const clearCanvasDrag = (phase: 'cancel'|'leave'): void => {
     for(const canvas of document.querySelectorAll<HTMLElement>('.canvas-viewport')) dispatchCanvasDrag(canvas,{id:'',x:0,y:0,phase});
   };
   unlisteners.push(await listen(`${CHANNEL}:canvas-end`,()=>clearCanvasDrag('cancel')));
 
-  if (main) unlisteners.push(await listen<Wire>(`${CHANNEL}:request`, event => {
-    const message = event.payload;
-    void request(message.request).then(result => emit(`${CHANNEL}:reply`, { token: message.token, to: message.from, result, snapshot: c.snapshot() } satisfies Reply))
-      .catch(error => emit(`${CHANNEL}:reply`, { token: message.token, to: message.from, error: String(error) } satisfies Reply));
-  }));
+  if(main)unlisteners.push(await serveDesktopRequests(bus,request,()=>c.snapshot(),diagnostics));
   else {
-    const accept = (snapshot: Snapshot): void => { if (snapshot.revision >= remoteRevision) { remoteRevision = snapshot.revision; c.accept(snapshot); } };
-    unlisteners.push(await listen<Snapshot>(`${CHANNEL}:snapshot`, e => accept(e.payload)));
-    unlisteners.push(await listen<Reply>(`${CHANNEL}:reply`, e => {
-      const reply = e.payload; if (reply.to !== label) return;
-      const waiting = pending.get(reply.token); if (!waiting) return;
-      pending.delete(reply.token); clearTimeout(waiting.timeout);
-      if (reply.snapshot) accept(reply.snapshot);
-      if (reply.error) waiting.reject(new Error(reply.error)); else waiting.resolve(reply.result ?? {});
-    }));
-    await request(null);
-    if(c.view.tutorialCardId===label.slice(5)){
+    await mirror!.start();
+    if(c.view.tutorialCardId===cardIdFromLabel(label)){
       const preferences=await invoke<unknown>('window_preferences');
       if(!preferences)await invoke('resize_note',{width:760,height:660,finish:true});
     }
@@ -104,7 +92,7 @@ export async function connectDesktop(c: WorkspaceController, label: string) {
   const prepareWindows = async (): Promise<void> => {
     await flushEditor();
     const token = crypto.randomUUID();
-    const waiting = new Set(await invoke<string[]>('card_window_labels'));
+    const waiting = new Set(await windows.labels());
     acknowledgements.set(token, waiting);
     try {
       await emit(`${CHANNEL}:prepare`, { token });
@@ -115,194 +103,121 @@ export async function connectDesktop(c: WorkspaceController, label: string) {
   };
 
   const close = async (): Promise<void> => {
+    if(main && c.hasExtensionJobs){errorHandler(uiText('extensions.busy'));return;}
     if (closing) return;
     closing = true;
     try {
       await flushEditor();
       if (main) {
         await prepareWindows();
-        await c.flush();
+        await c.execute({kind:'window-state',windowLabel:label,changes:{operation:'exit'}});await c.flush();
         await invoke('finish_exit');
       } else {
-        await request({ kind: 'window', id: label.slice(5), open: false });
+        await request({ kind: 'window', id: windowIdFromLabel(label)!, open: false });
       }
     } catch (error) { closing = false; errorHandler(String(error)); }
   };
   unlisteners.push(await w.onCloseRequested(event => { event.preventDefault(); void close(); }));
 
-  let highlighted: Element | null = null;
-  const probes = new Map<string, (valid: boolean) => void>();
-  unlisteners.push(await listen<{ token: string; valid: boolean; to: string }>(`${CHANNEL}:hit`, e => {
-    if (e.payload.to === label) probes.get(e.payload.token)?.(e.payload.valid);
-  }));
-  const clearHighlight = (): void => { highlighted?.classList.remove('native-drop-target'); highlighted = null; };
-  const dropElement = (drag: Drag): HTMLElement | null => {
-    if(drag.reparent && drag.source===label)return null;
-    const hit = document.elementFromPoint(drag.x, drag.y);
-    if (hit?.closest('button')) return null;
-    const canvas=hit?.closest<HTMLElement>('.canvas-viewport');
-    const oldParent = parentIndexOf(c.session.state).get(drag.id) ?? null;
-    const element = canvas && canvas.dataset.dropParent===oldParent ? canvas : hit?.closest<HTMLElement>('[data-drop-parent]');
-    if (!element) return null;
-    if (!element.classList.contains('canvas-viewport') && !element.classList.contains('insertion-zone') && !insideMergeArea(element.getBoundingClientRect(), drag.x, drag.y)) return null;
-    const parent = element.dataset.dropParent || null;
-    if(drag.reparent && parent===null && !c.session.state.cards.get(drag.id)?.isPrefab)return null;
-    if (parent && (parent === drag.id || isInSubtree(c.session.state, drag.id, parent))) return null;
-    if (parent && isBoard(c.session.state, parent) && parent !== oldParent) return null;
-    if (oldParent && isBoard(c.session.state, oldParent) && oldParent !== parent) return null;
-    if (parent === null && drag.source === `card-${drag.id}` && !c.session.state.cards.get(drag.id)?.isPrefab) return null;
-    return element;
-  };
-  unlisteners.push(await listen<Drag>(`${CHANNEL}:drag`, e => {
-    const drag = e.payload; clearHighlight();
-    if(drag.phase==='cancel') clearCanvasDrag('cancel');
-    else if(drag.phase!=='probe') clearCanvasDrag('leave');
-    if (drag.phase !== "probe") document.documentElement.classList.toggle("card-dragging", drag.phase === "move");
-    if (drag.phase === 'cancel' || drag.target !== label) return;
-    const element = dropElement(drag);
-    if (drag.phase === 'probe') {
-      void emit(`${CHANNEL}:hit`, { token: drag.token, valid: !!element, to: drag.source }); return;
-    }
-    if (!element) return;
-    if(element.classList.contains('canvas-viewport') && (drag.phase==='move' || drag.phase==='drop')) {
-      if(dispatchCanvasDrag(element,{id:drag.id,x:drag.x,y:drag.y,phase:drag.phase,...(drag.pick?{pick:drag.pick}:{})})) return;
-    }
-    highlighted = element; element.classList.add('native-drop-target');
-    if (drag.phase !== 'drop') return;
-    clearHighlight();
-    const parent = element.dataset.dropParent || null;
-    const index = dropIndex(c.session.state, drag.id, parent, Number(element.dataset.dropIndex ?? (parent ? c.session.state.children.get(parent)?.length ?? 0 : 0)));
-    const position = dropPosition(element, drag.x, drag.y);
-    const action: Request = parent === null ? { kind: 'float', id: drag.id } : { kind: 'move', id: drag.id, parent, index, ...position };
-    void request(action).catch(error => errorHandler(String(error)));
-  }));
+  const drag=await connectDesktopDrag({controller:c,label,window:w,windows,request,positionSync,dragState,clearCanvasDrag,errorHandler:reason=>errorHandler(reason)});
+  const {startDrag}=drag;unlisteners.push(()=>drag.dispose());
 
-  const startDrag = (id: string, event: ReactPointerEvent, mode?: CanvasDragAction): void => {
-    if(document.documentElement.dataset.doodleExiting)return;
-    const fixed=mode==='window-fixed';
-    const combinedGesture=mode!==undefined && canvasGesture(event.button,event.buttons)==='combined';
-    const targetElement=event.target as HTMLElement;
-    const relationHandle=!!targetElement.closest('.reparent-grip');
-    const inCanvas=!!targetElement.closest('.canvas-note,.canvas-viewport');
-    const configured=canvasBindings(c.view)[canvasGesture(event.button,event.buttons)];
-    if(mode==='pan'){const previous=stopActiveDrag?.() ?? Promise.resolve();const generation=++dragGeneration;void previous.then(()=>{if(generation===dragGeneration)fixedCanvasDrag=false;});clearCanvasDrag('cancel');event.stopPropagation();return;}
-    const allowed=mode!==undefined || (inCanvas && !relationHandle ? configured!=='pan' : event.button===0);
-    if(!allowed || onScrollbar(event.target as HTMLElement,event.clientX,event.clientY))return;
-    event.stopPropagation();
-    const previous=stopActiveDrag?.() ?? Promise.resolve();
-    const generation=++dragGeneration;
-    const current=()=>generation===dragGeneration;
-    if(mode)clearCanvasDrag('cancel');
-    const startX = event.clientX, startY = event.clientY;
-    const pick = canvasPick(event.target as HTMLElement,event.clientX,event.clientY);
-    const captureTarget = event.currentTarget, pointerId = event.pointerId;
-    let started = false, cancelled = false, ended=false;
-    let stopReleaseWatch=()=>{};
-    let ending:Promise<void>=Promise.resolve();
-    const sourceWindow = label === `card-${id}`;
-    const reparent = !!(event.target as HTMLElement).closest('.reparent-grip');
-    const movingWindow = mode==='window-desktop' || fixed || (sourceWindow && !reparent);
-    // Capture the new press immediately; only the window origin waits for old writes.
-    const pressCursor=movingWindow?cursorPosition():null;
-    const origin = movingWindow ? previous.then(()=>{if(current())fixedCanvasDrag=fixed;return Promise.all([pressCursor!, w.outerPosition()]);}) : null;
-    const note = document.querySelector('.proto-note > .card');
-    const clearHints = (): void => { note?.classList.remove('snap-left','snap-right','snap-top','snap-bottom','merge-ready'); };
-    let chain = Promise.resolve();
-    let moveFrame:number|null=null, motionStopped=false;
-    let motion:Promise<void>=Promise.resolve();
-    let latestHints:Record<string,boolean>={};
-    let lastMotionPoint:{x:number;y:number}|null=null;
-    const scheduleMotion=():void=>{
-      if(!movingWindow || motionStopped || moveFrame!==null)return;
-      moveFrame=requestAnimationFrame(()=>{
-        moveFrame=null;
-        motion=(async()=>{
-          const initial=await origin!;
-          const cursor=await cursorPosition();
-          if(motionStopped)return;
-          const point={x:initial[1].x+cursor.x-initial[0].x,y:initial[1].y+cursor.y-initial[0].y};
-          if(lastMotionPoint?.x===point.x && lastMotionPoint.y===point.y)return;
-          fixedCanvasDrag=fixed;
-          latestHints=await invoke('move_note',{...point,finish:false});
-          lastMotionPoint=point;
-          if(movingWindow){clearHints();for(const side of ['left','right','top','bottom'])if(latestHints[side])note?.classList.add(`snap-${side}`);}
-        })().catch(error=>{motionStopped=true;errorHandler(String(error));}).finally(()=>{if(!motionStopped)scheduleMotion();});
+  const inspections=new Map<string,{label:string;resolve:(value:unknown)=>void;reject:(error:Error)=>void;timer:ReturnType<typeof setTimeout>}>();
+  unlisteners.push(await listen<{token:string}>('kkb:inspect',event=>{void emit('kkb:inspected',{token:event.payload.token,label,data:inspectLocalWindow(c,label)});}));
+  if(main)unlisteners.push(await listen<{token:string;label:string;data:unknown}>('kkb:inspected',event=>{const waiting=inspections.get(event.payload.token);if(waiting?.label===event.payload.label){clearTimeout(waiting.timer);inspections.delete(event.payload.token);waiting.resolve(event.payload.data);}}));
+  unlisteners.push(()=>{for(const pending of inspections.values()){clearTimeout(pending.timer);pending.reject(new Error(uiText('native/mcpBridge.stopped')));}inspections.clear();});
+  const ownedWindow=async(target:string)=>{const windows=await getAllWindows();const found=windows.find(window=>window.label===target && (target==='main' || target.startsWith('card-')));if(!found)throw new Error(uiText('mcp/extended.invalidWindow'));return found;};
+  const desktopTool=async(tool:string,args:Record<string,unknown>):Promise<unknown>=>{
+    if(tool==='images-import')return invoke('import_image_assets',{inputs:args.inputs});
+    if(tool==='verify-images'){
+      const images=args.images as CardImage[];
+      const checked=await invoke<{assetId:string;mime:string;width:number;height:number}[]>('verify_image_assets',{assetIds:[...new Set(images.map(image=>image.assetId))]});
+      const assets=new Map(checked.map(asset=>[asset.assetId,asset]));
+      if(images.some(image=>{const actual=assets.get(image.assetId);return !actual || actual.mime!==image.mime || actual.width!==image.width || actual.height!==image.height;}))throw new Error(uiText('images.invalid'));
+      return null;
+    }
+    if(tool==='share-export'){
+      const id=args.id as string,assets=new Map<string,string>(),descriptors=new Map<string,{assetId:string;mime:CardImage['mime'];width:number;height:number;name:string}>(),ids=shareAssetIds(c.session.state,id);
+      if(ids.length>MAX_SHARE_ASSETS)throw new Error(uiText('share.tooLarge'));
+      for(let start=0;start<ids.length;start+=64){const batch=await invoke<{assetId:string;mime:CardImage['mime'];width:number;height:number;name:string}[]>('verify_image_assets',{assetIds:ids.slice(start,start+64)});for(const asset of batch)descriptors.set(asset.assetId,asset);}
+      let encodedSize=0;
+      for(const assetId of ids){const base64=(await invoke<string>('read_image_asset',{assetId})).split(',')[1]!;encodedSize+=base64.length;if(encodedSize>MAX_SHARE_BASE64)throw new Error(uiText('share.tooLarge'));assets.set(assetId,base64);}
+      const pkg=buildSharePackage(c.session.state,id,assets,descriptors);
+      if(pkg.cards.some(card=>card.images.some(image=>{const actual=descriptors.get(image.assetId);return !actual || actual.mime!==image.mime || actual.width!==image.width || actual.height!==image.height;})))throw new Error(uiText('share.assetMismatch'));
+      return invoke('save_share_package',{data:JSON.stringify(pkg),name:`${readCard(c.session,id).title.replace(/[<>:"/\\|?*\u0000-\u001f]/g,'_').slice(0,100) || id}.kkbpack`});
+    }
+    if(tool==='share-import'){
+      const data=await invoke<string|null>('pick_share_package');if(data===null)return null;
+      let value:unknown;try{value=JSON.parse(data);}catch{throw new Error(uiText('share.invalid'));}
+      const pkg=parseSharePackage(value);
+      for(let start=0;start<pkg.assets.length;start+=64){
+        const batch=pkg.assets.slice(start,start+64),stored=await invoke<{assetId:string;mime:string;width:number;height:number}[]>('import_image_assets',{inputs:batch.map(asset=>({name:asset.assetId,base64:asset.base64}))});
+        if(stored.length!==batch.length || stored.some((asset,index)=>asset.assetId!==batch[index]!.assetId))throw new Error(uiText('share.assetMismatch'));
+        for(const card of pkg.cards)for(const image of card.images){const actual=stored.find(asset=>asset.assetId===image.assetId);if(actual && (actual.mime!==image.mime || actual.width!==image.width || actual.height!==image.height))throw new Error(uiText('share.assetMismatch'));}
+      }
+      return pkg;
+    }
+    if(tool==='get_workspace')return {path:c.session.root};
+    if(tool==='list_windows')return Promise.all((await getAllWindows()).filter(window=>window.label==='main' || window.label.startsWith('card-')).map(async window=>({label:window.label,position:await window.outerPosition(),size:await window.innerSize(),scaleFactor:await window.scaleFactor(),cardId:window.label==='main'?null:cardIdFromLabel(window.label),focusId:c.view.windows[windowIdFromLabel(window.label)!]?.focusId ?? null})));
+    if(tool==='open_card_window' || tool==='close_card_window'){
+      const requestedId=args.cardId as string;readCard(c.session,requestedId);
+      const id=tool==='open_card_window'?navigationTarget(c.session.state,requestedId,requestedId):requestedId;
+      if(id==='000')throw new Error(uiText('mcp/extended.invalidWindow'));
+      if(tool==='open_card_window'){const opened=freshWindow(c.view,id);c.view=opened.view;await windows.open(opened.windowId);return {cardId:id,windowLabel:windowLabel(opened.windowId),open:true};}
+      const target=c.view.openWindows.includes(id)?id:c.view.openWindows.find(key=>windowAnchor(key)===id) ?? id;
+      c.view=closeWindow(c.view,target);await windows.close(target);
+      return {cardId:id,windowLabel:windowLabel(target),open:false};
+    }
+    const target=args.windowLabel as string ?? 'main';await ownedWindow(target);
+    if(tool==='capture_window')return invoke('capture_app_window',{label:target});
+    if(tool==='inspect_window'){
+      if(target===label)return inspectLocalWindow(c,label);
+      const token=crypto.randomUUID();return new Promise((resolve,reject)=>{
+        const timer=setTimeout(()=>{inspections.delete(token);reject(new Error(uiText('mcp/extended.inspectTimeout')));},3000);inspections.set(token,{label:target,resolve,reject,timer});
+        void invoke('emit_window_inspection',{label:target,token}).catch(error=>{clearTimeout(timer);inspections.delete(token);reject(error);});
       });
-    };
-    const send = async (phase: 'move' | 'drop' | 'cancel'): Promise<void> => {
-      if(cancelled && phase!=='cancel')return;
-      const cursor = await cursorPosition();
-      const initial = origin ? await origin : null;
-      if(phase!=='cancel' && (cancelled || !current()))return;
-      const position = initial ? { x: initial[1].x + cursor.x - initial[0].x, y: initial[1].y + cursor.y - initial[0].y } : null;
-      clearHints();
-      if (phase === 'cancel') {
-        if (initial) await invoke('move_note', { x: initial[1].x, y: initial[1].y, finish: false });
-        await emit(`${CHANNEL}:drag`, { id, source: label, target: null, x:0,y:0,screenX:cursor.x,screenY:cursor.y,phase } satisfies Drag); return;
-      }
-      if(movingWindow) {
-        if(position && phase==='drop')await invoke('move_note',{...position,finish:true});
-        return;
-      }
-      const hints = latestHints;
-      if (position && phase === 'drop') await invoke('move_note', { ...position, finish: false });
-      const target = await invoke<{ label: string; x: number; y: number } | null>('window_at_point', { x: cursor.x, y: cursor.y, ignoreLabel: sourceWindow ? label : null });
-      const wire: Drag = { id, source: label, target: target?.label ?? null, x: target?.x ?? 0, y: target?.y ?? 0, screenX: cursor.x, screenY: cursor.y, phase, ...(pick ? {pick} : {}), reparent };
-      let valid = false;
-      if (target) {
-        const token = crypto.randomUUID();
-        valid = await new Promise<boolean>(resolve => {
-          const timer = setTimeout(() => { probes.delete(token); resolve(false); }, 350);
-          probes.set(token, hit => { clearTimeout(timer); probes.delete(token); resolve(hit); });
-          void emit(`${CHANNEL}:drag`, { ...wire, phase:'probe', token }).catch(() => { clearTimeout(timer); probes.delete(token); resolve(false); });
-        });
-      }
-      if(cancelled)return;
-      if (valid) note?.classList.add('merge-ready');
-      else if (phase === 'move') for (const side of ['left','right','top','bottom']) if (hints[side]) note?.classList.add(`snap-${side}`);
-      if (phase === 'drop') {
-        clearHints();
-        if (!valid && position) await invoke('move_note', { ...position, finish: true });
-        else if (!valid && !movingWindow && ((!target && !reparent) || (reparent && !target && c.session.state.cards.get(id)?.isPrefab))) {
-          const result = await request({ kind: 'float', id });
-          await invoke('position_card_window', { cardId: result.createdId ?? id, x: cursor.x, y: cursor.y });
-        }
-      }
-      await emit(`${CHANNEL}:drag`, { ...wire, target: valid ? wire.target : null });
-    };
-    let framePending = false, startedMotion=false;
-    const move = (e: PointerEvent): void => {
-      if(e.pointerId!==pointerId)return;
-      if(combinedGesture && !(e.buttons&4) && (e.buttons&3)!==3){up();return;}
-      if (!started && Math.hypot(e.clientX - startX, e.clientY - startY) < 6) return;
-      if (!started) captureTarget.setPointerCapture?.(pointerId);
-      started = true;
-      if(movingWindow && !startedMotion){startedMotion=true;scheduleMotion();}
-      e.preventDefault();
-      document.documentElement.classList.add("card-dragging");
-      if (movingWindow || framePending) return;
-      framePending = true;
-      chain = chain.then(() => send('move')).catch(error => errorHandler(String(error))).finally(() => { framePending = false; });
-    };
-    const cleanup = (): void => { if(ended)return;ended=true;stopReleaseWatch();motionStopped=true;if(moveFrame!==null){cancelAnimationFrame(moveFrame);moveFrame=null;} document.documentElement.classList.remove("card-dragging"); if (captureTarget.hasPointerCapture?.(pointerId)) captureTarget.releasePointerCapture(pointerId); document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up); document.removeEventListener('pointercancel', cancel); document.removeEventListener('keydown', key); };
-    const finish=():void=>{
-      if(!current())return;
-      if(fixed)void w.outerPosition().then(position=>{if(current())lastWindowPosition=position;}).finally(()=>{if(current())fixedCanvasDrag=false;}).catch(error=>errorHandler(String(error)));
-      document.documentElement.classList.remove('card-dragging');void emit(`${CHANNEL}:canvas-end`,{});
-    };
-    const up = (): void => { if(ended)return;cleanup(); if (started) { const swallow = (e: MouseEvent): void => { e.preventDefault(); e.stopPropagation(); }; document.addEventListener('click', swallow, {capture:true,once:true}); setTimeout(()=>document.removeEventListener('click',swallow,true),0); } if (started && !cancelled) ending=Promise.all([chain,motion]).then(() => send('drop')).catch(error => errorHandler(String(error))).finally(finish); };
-    const cancel = (): void => { if(ended)return;cancelled = true; cleanup(); if (started) ending=Promise.all([chain,motion]).then(() => send('cancel')).catch(error => errorHandler(String(error))).finally(finish); };
-    stopActiveDrag=()=>{cancelled=true;cleanup();return Promise.all([chain,motion,ending]).then(()=>{if(current())fixedCanvasDrag=false;});};
-    const key = (e: KeyboardEvent): void => { if (e.key === 'Escape') cancel(); };
-    document.addEventListener('pointermove', move); document.addEventListener('pointerup', up); document.addEventListener('pointercancel', cancel); document.addEventListener('keydown', key);
-    stopReleaseWatch=watchDragRelease(captureTarget,pointerId,event.buttons,up);
+    }
+    throw new Error(uiText('mcp/extended.desktopOnly'));
   };
-  const switchWorkspace = async (path: string | null): Promise<void> => {
+  let bridgeQueue=Promise.resolve();
+  if(main){
+    await c.attachExtensions((channel,args)=>invoke(channel==='control'?'extension_control':channel==='start'?'extension_start':'extension_job',args));
+    unlisteners.push(await listen<{workspace:string;jobId:number;reply:Record<string,unknown>}>('kkb:extension-result',event=>{
+      if(event.payload.workspace.replaceAll('\\','/')!==c.session.root.replaceAll('\\','/'))return;
+      void c.completeExtension(event.payload.jobId,event.payload.reply).catch(error=>errorHandler(String(error)));
+    }));
+    unlisteners.push(await listen<{id:string;tool:string;args:Record<string,unknown>}>('kkb:mcp-request',event=>{
+      bridgeQueue=bridgeQueue.then(async()=>{
+        const claimed=await invoke<{tool:string;args:Record<string,unknown>;context?:import('../core/collaboration.ts').McpContext}|null>('mcp_bridge_claim',{id:event.payload.id});
+        if(!claimed)return;
+        if(claimed.tool==='switch_workspace'){
+          try{
+            validateToolCall(claimed.tool,claimed.args);
+            const path=claimed.args.path as string|null;
+            await invoke('select_workspace',{path,checkOnly:true});
+            await switchWorkspace(path,async()=>{await invoke('mcp_bridge_reply',{id:event.payload.id,reply:{result:{status:'scheduled',requestedPath:path}}});},async()=>{if(!await invoke<boolean>('mcp_bridge_active',{id:event.payload.id}))throw new Error(uiText('native/mcpBridge.stopped'));},claimed.context ?? {});
+          }catch(error){await invoke('mcp_bridge_reply',{id:event.payload.id,reply:{error:String(error)}});errorHandler(String(error));}
+          return;
+        }
+        let reply:unknown;
+        try{const result=await request({kind:'mcp',tool:claimed.tool,args:claimed.args,context:claimed.context},async()=>{if(!await invoke<boolean>('mcp_bridge_active',{id:event.payload.id}))throw new Error(uiText('native/mcpBridge.stopped'));});reply={result:result.toolResult ?? null};}
+        catch(error){reply={error:String(error)};}
+        await invoke('mcp_bridge_reply',{id:event.payload.id,reply});
+      }).catch(error=>errorHandler(String(error)));
+    }));
+    await invoke('mcp_bridge_start');
+  }
+  const switchWorkspace = async (path: string | null,beforeReload?:()=>Promise<void>,beforeSelection?:()=>Promise<void>,mcpContext?:import('../core/collaboration.ts').McpContext): Promise<void> => {
+    if(c.hasExtensionJobs)throw new Error(uiText('extensions.busy'));
     if (!main) throw new Error(uiText("webview/desktop.text003"));
-    await prepareWindows(); await c.flush();
-    await invoke('select_workspace', { path });
-    try {await invoke('reload_workspace');}
-    catch(error){await request(null);throw error;}
+    switching=true;
+    try{
+      await prepareWindows(); await c.flush();
+      await beforeSelection?.();
+      await c.execute(mcpContext?{kind:'mcp',tool:'switch_workspace',args:{path},context:mcpContext}:{kind:'workspace',path},undefined,async()=>{await invoke('select_workspace',{path});return {status:'scheduled',requestedPath:path};});
+      await beforeReload?.();
+      await invoke('reload_workspace');
+    }catch(error){switching=false;await request(null);await invoke('mcp_bridge_start');throw error;}
     unlisteners.forEach(dispose=>dispose());
     window.location.reload();
   };

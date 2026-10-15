@@ -3,6 +3,8 @@ node_modules/
 dist/
 src-tauri/target/
 src-tauri/gen/
+src-tauri/binaries/
+src-mcp/target/
 
 # 图标生成的中间产物
 icon-source.png

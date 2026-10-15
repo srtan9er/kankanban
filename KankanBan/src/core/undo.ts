@@ -1,4 +1,5 @@
 import {uiText} from '../i18n/text.ts';
+import {readCardImages} from './card-images.ts';
 /**
  * 撤销（ARCHITECTURE.md §4.3 断言二：`undo(events) === 上一状态`）。
  *
@@ -56,7 +57,7 @@ function undoOne(state: CoreState, event: CardEvent): CoreState {
       }
       const key = fieldKeyOf(event.path);
       const cards = new Map(state.cards);
-      cards.set(event.cardId, { ...prev, [key]: event.from } as CardFields);
+      cards.set(event.cardId, { ...prev, [key]: key==='images'?readCardImages(event.from ?? []):event.from } as CardFields);
       return { cards, children: state.children, lastAppliedSeq };
     }
 
@@ -140,7 +141,7 @@ function undoOne(state: CoreState, event: CardEvent): CoreState {
       // 整棵子树从快照整体放回（快照在 apply 时已与实际子树核对过）。
       const cards = new Map(state.cards);
       for (const [id, fields] of Object.entries(event.subtree.cards)) {
-        cards.set(id, fields);
+        cards.set(id, fields.images===undefined?fields:{...fields,images:readCardImages(fields.images)});
       }
 
       const children = new Map(state.children);

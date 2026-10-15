@@ -1,5 +1,10 @@
+import {usePressEdit} from './usePressEdit.ts';
+import {AddIcon} from './AddIcon.tsx';
+import {useContext} from 'react';
+import {EditMode} from './edit-mode.ts';
 import {useWindowResize} from './useWindowResize.ts';
 import {DrawingBody} from './DrawingBody.tsx';
+import {MarkdownEditor} from './MarkdownEditor.tsx';
 import {listen,type UnlistenFn} from '@tauri-apps/api/event';
 import {uiText} from '../i18n/text.ts';
 import {PrefabSyncButtons} from './PrefabSyncButtons.tsx';
@@ -14,29 +19,33 @@ import { isTauri } from './tauri-backend.ts';
 import { Drafts, registerEditor } from './drafts.ts';
 import { CardRegions, type ChildArea } from './CardRegions.tsx';
 
-export function PrototypeNote({ card, send, close, children, breadcrumb, startDrag, hideBody = false, waterfall = false, canvas = false, vertical = false, ordinary = true, childSize, add, dragBindings = canvasBindings({}) }: {
-  dragBindings?: CanvasDragBindings; waterfall?: boolean; canvas?: boolean; hideBody?: boolean; vertical?: boolean; ordinary?: boolean; childSize?: ChildArea | undefined; add: () => void;
-  card: CardFields; send: (request: Request) => Promise<{ createdId?: string }>;
+export function PrototypeNote({ card, viewId=card.id, send, close, children, breadcrumb, startDrag, extension = false, hideBody = false, waterfall = false, canvas = false, vertical = false, ordinary = true, childSize, add, dragBindings = canvasBindings({}) }: {
+  extension?:boolean; dragBindings?: CanvasDragBindings; waterfall?: boolean; canvas?: boolean; hideBody?: boolean; vertical?: boolean; ordinary?: boolean; childSize?: ChildArea | undefined; add: () => void;
+  viewId?:string|undefined; card: CardFields; send: (request: Request) => Promise<{ createdId?: string }>;
   close?: (() => void) | undefined; children: ReactNode; breadcrumb: ReactNode;
   startDrag?: ((id: string, event: ReactPointerEvent, mode?: CanvasDragAction) => void) | undefined;
 }) {
   const [editingField, setEditingField] = useState<'title' | 'content' | null>(null);
+  const {editable,busy:modeBusy,toggle}=useContext(EditMode);
+  useEffect(()=>{if(!editable)setEditingField(null);},[editable]);
   const preview = editingField === null;
   const [finishing, setFinishing] = useState(false);
   const finishStarted=useRef(false);
+  const pendingField=useRef<'title'|'content'|undefined>(undefined);
   const titleInput = useRef<HTMLInputElement>(null);
-  const bodyInput = useRef<HTMLTextAreaElement>(null);
+  const bodyInput = useRef<HTMLDivElement>(null);
   useEffect(() => { if(editingField && !finishing) (editingField === 'title' ? titleInput.current : bodyInput.current)?.focus(); }, [editingField, finishing]);
   const enterEdit = (field: 'title' | 'content'): void => {
-    if(finishing || editingField === field) return;
+    if(!editable || modeBusy || editingField === field) return;
+    if(finishing || finishStarted.current){pendingField.current=field;return;}
     if(preview) {setEditingField(field); return;}
     finishEdit(field);
   };
   const [collapsed, setCollapsed] = useState(false);
-  const [pinned, setPinned] = useState(true);
+  const [pinned, setPinned] = useState(false);
   const [error, setError] = useState('');
   const [title, setTitle] = useState(card.title), [content, setContent] = useState(card.content);
-  const drafts = useRef(new Drafts((field, value) => send({ kind: 'edit', id: card.id, field, value })));
+  const drafts = useRef(new Drafts((field, value,before) => send({ before,kind: 'edit', id: card.id, field, value })));
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const flushAsync = (): Promise<unknown> => {
     if (timer.current) clearTimeout(timer.current);
@@ -45,7 +54,7 @@ export function PrototypeNote({ card, send, close, children, breadcrumb, startDr
   const finishEdit = (next: 'title' | 'content' | null = null): void => {
     if(finishing || finishStarted.current) return;
     finishStarted.current=true;setFinishing(true);
-    void flushAsync().then(()=>setEditingField(next)).catch(()=>undefined).finally(()=>{finishStarted.current=false;setFinishing(false);});
+    void flushAsync().then(()=>{setEditingField(pendingField.current ?? next);pendingField.current=undefined;}).catch(()=>{pendingField.current=undefined;}).finally(()=>{finishStarted.current=false;setFinishing(false);});
   };
   useEffect(() => {
     if(preview) return;
@@ -58,10 +67,6 @@ export function PrototypeNote({ card, send, close, children, breadcrumb, startDr
       // These controls already save/exit or switch fields through the same transition.
       if(target instanceof Element && note?.contains(target)){
         if(target.closest('.toggle'))return;
-        if(!target.closest('button,[data-drawing-surface]')){
-          if(target.closest('.title')){finishEdit('title');return;}
-          if(target.closest('.preview')){finishEdit('content');return;}
-        }
       }
       finishEdit();
     };
@@ -71,7 +76,7 @@ export function PrototypeNote({ card, send, close, children, breadcrumb, startDr
   });
   const flush = (): void => { void flushAsync().catch(() => undefined); };
   const change = (field: 'title' | 'content', value: string): void => {
-    (field === 'title' ? setTitle : setContent)(value); drafts.current.set(field, value);
+    (field === 'title' ? setTitle : setContent)(value); drafts.current.set(field, value,field==='title'?title:content);
     if (timer.current) clearTimeout(timer.current); timer.current = setTimeout(flush, 200);
   };
   useEffect(() => { if (!drafts.current.has('title')) setTitle(card.title); if (!drafts.current.has('content')) setContent(card.content); }, [card.title, card.content]);
@@ -84,12 +89,12 @@ export function PrototypeNote({ card, send, close, children, breadcrumb, startDr
     if(!isTauri())return;
     let disposed=false,unlisten:UnlistenFn|undefined;
     void invoke<{collapsed:boolean;pinned:boolean}|null>('window_preferences').then(p=>{if(p && !disposed){setCollapsed(p.collapsed);setPinned(p.pinned);}}).catch(e=>{if(!disposed)setError(String(e));});
-    void listen<{label:string}>('kkb:window-activated',event=>{if(event.payload.label===getCurrentWindow().label){setCollapsed(false);setPinned(true);}}).then(stop=>{if(disposed)stop();else unlisten=stop;}).catch(e=>{if(!disposed)setError(String(e));});
+    void listen<{label:string}>('kkb:window-activated',event=>{if(event.payload.label===getCurrentWindow().label){setCollapsed(false);}}).then(stop=>{if(disposed)stop();else unlisten=stop;}).catch(e=>{if(!disposed)setError(String(e));});
     return()=>{disposed=true;unlisten?.();};
   }, []);
   const mode = (key: 'collapsed' | 'pinned', value: boolean): void => {
     if (!isTauri()) { (key === 'collapsed' ? setCollapsed : setPinned)(value); return; }
-    void invoke('set_note_mode', { [key]: value }).then(() => (key === 'collapsed' ? setCollapsed : setPinned)(value)).catch(e => setError(String(e)));
+    void invoke('set_note_mode', { [key]: value }).then(() => {(key === 'collapsed' ? setCollapsed : setPinned)(value);document.dispatchEvent(new CustomEvent('kkb:window-operation',{detail:{operation:'mode',key,value}}));}).catch(e => setError(String(e)));
   };
   const fixedCanvasDrag=useFixedCanvasDrag(canvas && !!startDrag,dragBindings,(e,mode)=>{flush();startDrag?.(card.id,e,mode);});
   const moveWindow = (event: ReactPointerEvent): void => {
@@ -99,16 +104,17 @@ export function PrototypeNote({ card, send, close, children, breadcrumb, startDr
     flush(); startDrag?.(card.id, event, 'window-desktop');
   };
   const resize=useWindowResize(setError);
-  return <div className={`proto-note ${canvas ? "canvas-note" : waterfall ? "waterfall-note" : hideBody ? "board-note" : ""}`} data-drop-parent={card.id} onKeyDown={e=>{if(!preview && !e.nativeEvent.isComposing && (e.key==='Escape' || ((e.ctrlKey || e.metaKey) && e.key==='Enter'))){e.preventDefault(); e.stopPropagation(); finishEdit();}}}><div {...fixedCanvasDrag} onPointerDown={e => { if (!(e.target as HTMLElement).closest("button,[data-card-id],[role=separator],[data-drawing-surface]")) moveWindow(e); }} className={`card ${card.isPrefab ? 'prefab' : card.prefabRef ? 'instance' : ''} ${preview ? 'viewing-mode' : `editing-mode editing-${editingField}`} ${error ? 'error' : ''} `}>
-    <div className="note-title-row"><button className="reparent-grip" aria-label={uiText("webview/PrototypeNote.text002")} title={uiText("webview/PrototypeNote.text002")} onPointerDown={e=>{if(e.button!==0)return;flush();startDrag?.(card.id,e);}} onClick={e=>e.stopPropagation()} /><input ref={titleInput} readOnly={editingField!=="title"} disabled={finishing} onClick={()=>enterEdit("title")} onPointerDown={e=>{if(editingField==="title")e.stopPropagation();}} className="title" aria-label={uiText("webview/PrototypeNote.text003")} value={title} onChange={e => change('title', e.target.value)} onBlur={flush} />
+  const editPress=usePressEdit('note',enterEdit);
+  return <div {...editPress} data-scroll-owner={`card:${card.id}`} className={`proto-note ${extension ? "extension-note" : ""} ${canvas ? "canvas-note" : waterfall ? "waterfall-note" : hideBody ? "board-note" : ""}`} data-drop-parent={editable && !extension?card.id:undefined} onKeyDown={e=>{if(!preview && !e.nativeEvent.isComposing && (e.key==='Escape' || ((e.ctrlKey || e.metaKey) && e.key==='Enter'))){e.preventDefault(); e.stopPropagation(); finishEdit();}}}><div {...fixedCanvasDrag} onPointerDown={e => { if (!(e.target as HTMLElement).closest("button,[data-card-id],[role=separator],[data-drawing-surface]")) moveWindow(e); }} className={`card ${card.isPrefab ? 'prefab' : card.prefabRef ? 'instance' : ''} ${preview ? 'viewing-mode' : `editing-mode editing-${editingField}`} ${error ? 'error' : ''} `}>
+    <div className="note-title-row">{!extension && <button className="reparent-grip" aria-label={uiText("webview/PrototypeNote.text002")} title={uiText("webview/PrototypeNote.text002")} onPointerDown={e=>{if(!editable || e.button!==0)return;flush();startDrag?.(card.id,e);}} onClick={e=>e.stopPropagation()} />}<input ref={titleInput} readOnly={editingField!=="title"} disabled={finishing} onPointerDown={e=>{if(editingField==="title")e.stopPropagation();}} className="title" aria-label={uiText("webview/PrototypeNote.text003")} value={title} onChange={e => change('title', e.target.value)} onBlur={flush} />
       <button className="collapse" title={collapsed ? uiText("webview/PrototypeNote.text004") : uiText("webview/PrototypeNote.text005")} onClick={() => mode('collapsed', !collapsed)}>{collapsed ? '▴' : '▾'}</button>
       <button className={`pin ${pinned ? '' : 'off'}`} title={pinned ? uiText("webview/PrototypeNote.text006") : uiText("webview/PrototypeNote.text007")} onClick={() => mode('pinned', !pinned)}>●</button>
-      <button className="toggle" aria-label={preview ? uiText("webview/PrototypeNote.text008") : uiText("webview/PrototypeNote.text009")} title={preview ? (hideBody ? uiText("webview/PrototypeNote.text010") : uiText("webview/PrototypeNote.text011")) : uiText("webview/PrototypeNote.text012")} disabled={finishing} onPointerDown={event=>{if(event.button!==0)return;event.preventDefault();preview ? enterEdit(hideBody ? 'title' : 'content') : finishEdit();}} onClick={event=>{if(event.detail===0)preview ? enterEdit(hideBody ? 'title' : 'content') : finishEdit();}}>{preview ? '✎' : '✓'}</button>
+      {!extension && <button className="toggle" aria-label={uiText(editable?'webview/PrototypeNote.browseMode':'webview/PrototypeNote.editMode')} title={uiText(editable?'webview/PrototypeNote.browseMode':'webview/PrototypeNote.editMode')} aria-pressed={editable} disabled={finishing || modeBusy} onClick={()=>toggle?.()}>{editable ? '✎' : '◉'}</button>}
       <button className="close" title={uiText("webview/PrototypeNote.text013")} onClick={() => { flush(); close?.(); }}>×</button>
     </div>
-    {!collapsed && <><div className="note-breadcrumb">{card.isPrefab && <span className="prefab-badge">{uiText("webview/PrototypeNote.text014")}</span>}{breadcrumb}<PrefabSyncButtons card={card} send={send}/></div>
+    {!collapsed && <><div className="note-breadcrumb">{card.isPrefab && <span className="prefab-badge">{uiText("webview/PrototypeNote.text014")}</span>}{breadcrumb}{!extension && <button className="share-card-button" title={uiText("share.export")} aria-label={uiText("share.export")} onClick={()=>void flushAsync().then(()=>send({kind:"share-export",id:card.id})).catch(error=>setError(String(error)))}>↗</button>}<PrefabSyncButtons card={card} send={send}/></div>
       {error && <div className="note-error" role="alert">{error}<button onClick={() => { setError(''); flush(); }}>{uiText("webview/PrototypeNote.text015")}</button></div>}
-      {!hideBody && ordinary ? <CardRegions vertical={vertical} saved={childSize} save={area=>{void send({kind:'view',id:card.id,childArea:area}).catch(e=>setError(String(e)));}} add={add} body={<div className="body">{editingField !== "content" ? <div className="preview" title={uiText("webview/PrototypeNote.text016")} onClick={e=>{if(!(e.target as HTMLElement).closest("a")) enterEdit("content");}}><DrawingBody key={card.id} doodle={card.doodle ?? null} id={card.id} content={content} placeholder={uiText("webview/PrototypeNote.text017")} send={send} prepare={()=>flushAsync().then(()=>setEditingField(null))}/></div> : <textarea ref={bodyInput} disabled={finishing} onPointerDown={e=>e.stopPropagation()} className="content" aria-label={uiText("webview/PrototypeNote.text018")} placeholder={uiText("webview/PrototypeNote.text017")} value={content} onChange={e => change('content', e.target.value)} onBlur={flush} />}</div>}>{children}</CardRegions> : <>{!hideBody && <div className="body">{editingField !== "content" ? <div className="preview" title={uiText("webview/PrototypeNote.text016")} onClick={e=>{if(!(e.target as HTMLElement).closest("a")) enterEdit("content");}}><DrawingBody key={card.id} doodle={card.doodle ?? null} id={card.id} content={content} placeholder={uiText("webview/PrototypeNote.text017")} send={send} prepare={()=>flushAsync().then(()=>setEditingField(null))}/></div> : <textarea ref={bodyInput} disabled={finishing} onPointerDown={e=>e.stopPropagation()} className="content" aria-label={uiText("webview/PrototypeNote.text018")} placeholder={uiText("webview/PrototypeNote.text017")} value={content} onChange={e => change('content', e.target.value)} onBlur={flush} />}</div>}<div className="note-children">{children}</div>{!canvas && (!hideBody || waterfall) && <button className="floating-add-card" aria-label={uiText("webview/PrototypeNote.text019")} title={uiText("webview/PrototypeNote.text019")} onClick={add}>＋</button>}</>}
+      {!hideBody && ordinary ? <CardRegions vertical={vertical} saved={childSize} save={area=>{void send({kind:'view',id:viewId,childArea:area}).catch(e=>setError(String(e)));}} add={add} body={<div className="body">{editingField !== "content" ? <div className="preview" title={editable?uiText("webview/PrototypeNote.text016"):undefined}><DrawingBody key={`${card.id}:${editable}`} doodle={card.doodle ?? null} id={card.id} content={content} images={card.images ?? []} placeholder={uiText("webview/PrototypeNote.text017")} send={send} prepare={()=>flushAsync().then(()=>setEditingField(null))}/></div> : <MarkdownEditor ref={bodyInput} disabled={finishing} onPointerDown={e=>e.stopPropagation()} className="content" aria-label={uiText("webview/PrototypeNote.text018")} placeholder={uiText("webview/PrototypeNote.text017")} value={content} onChange={value=>change('content',value)} onBlur={flush} />}</div>}>{children}</CardRegions> : <>{!hideBody && <div className="body">{editingField !== "content" ? <div className="preview" title={editable?uiText("webview/PrototypeNote.text016"):undefined}><DrawingBody key={`${card.id}:${editable}`} doodle={card.doodle ?? null} id={card.id} content={content} images={card.images ?? []} placeholder={uiText("webview/PrototypeNote.text017")} send={send} prepare={()=>flushAsync().then(()=>setEditingField(null))}/></div> : <MarkdownEditor ref={bodyInput} disabled={finishing} onPointerDown={e=>e.stopPropagation()} className="content" aria-label={uiText("webview/PrototypeNote.text018")} placeholder={uiText("webview/PrototypeNote.text017")} value={content} onChange={value=>change('content',value)} onBlur={flush} />}</div>}<div className="note-children">{children}</div>{!canvas && (!hideBody || waterfall) && <button className="floating-add-card" aria-label={uiText("webview/PrototypeNote.text019")} title={uiText("webview/PrototypeNote.text019")} onClick={add}><AddIcon/></button>}</>}
       <button className="resize window-resize-handle" title={uiText("webview/PrototypeNote.text020")} onPointerDown={resize} /></>}
   </div></div>;
 }

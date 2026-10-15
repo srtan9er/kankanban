@@ -1,3 +1,4 @@
+import packageInfo from '../../package.json' with {type:'json'};
 /**
  * MCP 服务器 —— 把 `tools.ts` 的工具目录接到真正的 MCP 协议上（ARCHITECTURE.md §9.1 的适配器）。
  *
@@ -14,9 +15,10 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 
 import { openSession, type Session, type SessionOptions } from '../core/workspace.ts';
-import { callTool, toolListPayload } from './tools.ts';
+import { callTool, toolListPayload,validateToolCall } from './tools.ts';
+import {actorKey,validateActor,type McpContext} from '../core/collaboration.ts';
 
-export const SERVER_INFO = { name: 'kankanban', version: '0.1.0' } as const;
+export const SERVER_INFO = { name: 'kankanban', version: packageInfo.version } as const;
 
 /**
  * 造一个绑定到某个会话的 MCP 服务器。
@@ -24,17 +26,27 @@ export const SERVER_INFO = { name: 'kankanban', version: '0.1.0' } as const;
  * 会话是**显式传入**的，不是模块级单例 —— 这样测试能起多个互不干扰的
  * 「工作区 + 服务器」组合，也避免以后接多工作区时踩到隐藏共享状态。
  */
-export function createServer(session: Session): Server {
+export function createServer(session: Session | ((name:string,args:Record<string,unknown>,context?:McpContext)=>Promise<unknown>)): Server {
   const server = new Server(SERVER_INFO, { capabilities: { tools: {} } });
+  let context:McpContext={};
 
   server.setRequestHandler(ListToolsRequestSchema, () => ({ tools: toolListPayload() }));
 
-  server.setRequestHandler(CallToolRequestSchema, (request) => {
+  server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const args = (request.params.arguments ?? {}) as Record<string, unknown>;
 
     try {
-      const result = callTool(session, request.params.name, args);
-      return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
+      if(request.params.name==='identify_actor'){
+        validateToolCall(request.params.name,args);
+        const actor=validateActor({kind:'ai',id:args.id,name:args.name},'ai');
+        context=context.actor && actorKey(context.actor)===actorKey(actor)?{...context,actor}:{actor};
+        return {content:[{type:'text' as const,text:JSON.stringify({actor:context.actor})}]};
+      }
+      const requestContext=context;
+      const result = typeof session==='function' ? await session(request.params.name,args,requestContext) : callTool(session, request.params.name, args);
+      if(context===requestContext && request.params.name==='read_operations' && result && typeof result==='object' && 'reviewToken' in result && typeof result.reviewToken==='string')context={...context,reviewToken:result.reviewToken};
+      if(request.params.name==='capture_window' && result && typeof result==='object' && 'data' in result && 'mimeType' in result){const image=result as {data:string;mimeType:string};return {content:[{type:'image' as const,data:image.data,mimeType:image.mimeType},{type:'text' as const,text:JSON.stringify({...result,data:undefined})}]};}
+      return { content: [{ type: 'text' as const, text: JSON.stringify(result) }] };
     } catch (error) {
       // 工具失败要**让 AI 看见原因**，所以回成 isError 而不是让异常炸掉整个会话 ——
       // 一次调用失败不该让连接断掉。注意这里只吞"工具内部"的错误，

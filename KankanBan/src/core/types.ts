@@ -1,4 +1,6 @@
 import type {InkDocument} from './drawing.ts';
+import type {CardImage} from './card-images.ts';
+export type {CardImage} from './card-images.ts';
 /**
  * KankanBan 核心数据类型 —— 只含类型，不含运行时代码。
  *
@@ -45,6 +47,8 @@ export type CardFields = {
   title: string;
   /** Markdown 源码 */
   content: string;
+  /** Workspace-local immutable image assets and their intrinsic metadata. */
+  images?:CardImage[];
   /** Transparent, scroll-attached doodle layer owned by this card. */
   doodle?: InkDocument | null;
   /** 呈现定义卡的 id；null = 默认呈现 */
@@ -82,6 +86,7 @@ export type CardFields = {
 // ── §4.1 事件 ──────────────────────────────────────────────────────────────────
 
 export type Envelope = {
+  actor?:import('./collaboration.ts').Actor;
   /** One user action may contain several ordinary events; undo treats it as a unit. */
   transactionId?: string;
   transactionSize?: number;

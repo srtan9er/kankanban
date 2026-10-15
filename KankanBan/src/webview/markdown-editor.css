@@ -1,0 +1,6 @@
+.markdown-editor { white-space:pre-wrap; overflow-wrap:anywhere; overflow:auto; outline:none; }
+.markdown-editor[data-empty="true"]::before { content:attr(data-placeholder); color:var(--muted); pointer-events:none; }
+.markdown-editor[aria-disabled="true"] { opacity:.55; }
+.markdown-editor .markdown-image-token { display:inline; font-weight:700; color:var(--palette-accent); margin-inline:.25em; user-select:all; -webkit-user-select:all; white-space:nowrap; cursor:default; }
+
+#root .proto-note .markdown-editor.content { padding:12px 16px; box-sizing:border-box; }

@@ -1,11 +1,14 @@
 import {uiText} from '../i18n/text.ts';
-import {useState} from 'react';
+import {useContext,useState} from 'react';
+import {EditMode} from './edit-mode.ts';
 import type {CardFields} from '../core/types.ts';
 import type {Request} from './controller.ts';
 import {prepareEditors} from './drafts.ts';
 
 export function PrefabSyncButtons({card,send}:{card:CardFields;send:(request:Request)=>Promise<unknown>}) {
  const [busy,setBusy]=useState(false),[error,setError]=useState('');
+ const {editable}=useContext(EditMode);
+ if(!editable)return null;
  if(!card.isPrefab && !card.prefabRef)return null;
  const sync=async(target:'prefab'|'all')=>{
   if(busy)return;setBusy(true);setError('');

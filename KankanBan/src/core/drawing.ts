@@ -2,6 +2,8 @@ import {viewportPlane,type Point,type PlaneSize} from './plane-geometry.ts';
 import {CARD_MIN_WIDTH,CARD_MIN_HEIGHT} from './layout-metrics.ts';
 import type {PlaneEntry} from './types.ts';
 export type InkColor='text'|'accent'|'danger'|'handle';
+export const PENCIL_COLOR:InkColor='text';
+export const PENCIL_WIDTH=3;
 export type InkStroke={id:string;color:InkColor;width:number;points:Point[]};
 export type InkGroup={strokes:string[];cards:string[]};
 export type InkDocument={version:1;id:string;width:number;height:number;strokes:InkStroke[];groups?:InkGroup[]};

@@ -1,4 +1,5 @@
 import {discardLegacyInk} from './drawing.ts';
+import {validCardImages,copyCardImages} from './card-images.ts';
 import {uiText} from '../i18n/text.ts';
 /**
  * core 操作层 —— ARCHITECTURE.md §9.1 的"唯一权威操作层"。
@@ -29,6 +30,7 @@ import { scopeOf, type Scope } from './scope.ts';
 import { assertInvariantW, desktopCards } from './windows.ts';
 
 export type Session = {
+  actor?:import('./collaboration.ts').Actor;
   /** Internal compound-action staging; never serialized. */
   staging?:boolean;
   root: string;
@@ -58,6 +60,7 @@ export type SessionOptions = {
 export type PlanePlacement = { x: number; y: number; w: number; h: number; z: number };
 
 export type CreateCardSpec = {
+  images?:CardFields['images'];
   doodle?:CardFields['doodle'];
   parentId: CardId | null;
   title?: string | undefined;
@@ -170,6 +173,7 @@ export function entryFor(layout: Layout, id: CardId, order: number, plane?: Plan
 // ── 写操作 ─────────────────────────────────────────────────────────────────────
 
 export function createCard(session: Session, spec: CreateCardSpec): CardId {
+  if(spec.images!==undefined && !validCardImages(spec.images))throw new Error(uiText('images.invalid'));
   if (spec.parentId !== null && isBoard(session.state, spec.parentId) && childList(session.state, spec.parentId).length >= 3) {
     throw new Error(uiText("core/workspace.text002"));
   }
@@ -188,6 +192,7 @@ export function createCard(session: Session, spec: CreateCardSpec): CardId {
     id,
     title: spec.title ?? uiText("app.newCardTitle", {arg0:id}),
     content: spec.content ?? '',
+    ...(spec.images===undefined?{}:{images:copyCardImages(spec.images)}),
     doodle:spec.doodle ?? null,
     type: spec.type ?? null,
     layout: spec.layout ?? 'plain',
@@ -257,13 +262,15 @@ export function setLayout(
 export function setField(session: Session, cardId: CardId, path: FieldPath, value: unknown): void {
   const fields = mustCard(session, cardId);
   const key = path.startsWith('/') ? path.slice(1) : path;
+  if(key==='images' && !validCardImages(value))throw new Error(uiText('images.invalid'));
   const previous = (fields as unknown as Record<string, unknown>)[key];
-  const from = (key === 'prefabBase' || key === 'doodle') ? previous ?? null : previous;
+  const from = key==='images'?copyCardImages(previous as CardFields['images'] ?? []):(key === 'prefabBase' || key === 'doodle') ? previous ?? null : previous;
+  const to=key==='images'?copyCardImages(value as NonNullable<CardFields['images']>):value;
 
   // 值没变就不发事件：日志里全是空操作会让"最近改动"这种读法失效，也让撤销变得没用。
-  if (stableStringify(from) === stableStringify(value)) return;
+  if (stableStringify(from) === stableStringify(to)) return;
 
-  emit(session, { ...envelope(session, cardId), type: 'field_set', cardId, path, from, to: value });
+  emit(session, { ...envelope(session, cardId), type: 'field_set', cardId, path, from, to });
 }
 
 /** 移动一张卡。`toParentId` 为 `null` 表示浮动到桌面（§2.8 不变量 W）。 */
@@ -672,6 +679,7 @@ function envelope(session: Session, cardId: CardId): Omit<CardEvent, 'type'> {
     id: `e${seq}`,
     seq,
     clientId: session.clientId,
+    ...(session.actor?{actor:session.actor}:{}),
     timestamp: session.clock(),
     cardId,
     // 撤销要把 `updatedAt` 放回原值，而 `undoEvent` 看不到日志 —— 所以由事件自己带上，

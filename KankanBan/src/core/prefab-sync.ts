@@ -1,10 +1,11 @@
 import {remapInkCards,type InkDocument} from './drawing.ts';
+import {copyCardImages,type CardImage} from './card-images.ts';
 import {uiText} from '../i18n/text.ts';
 import type {CardFields,Layout} from './types.ts';
 import type {CoreState} from './state.ts';
 import {createCard,setField,setLayout,moveCard,deleteCard,type Session,type PlanePlacement} from './workspace.ts';
 
-type Node = {key:string; parent:string|null; index:number; title:string; content:string; doodle:InkDocument|null; layout:Layout; type:string|null; plane:PlanePlacement|null};
+type Node = {key:string; parent:string|null; index:number; title:string; content:string; images?:CardImage[]; doodle:InkDocument|null; layout:Layout; type:string|null; plane:PlanePlacement|null};
 type Tree = Node[];
 const equal=(a:unknown,b:unknown)=>JSON.stringify(a)===JSON.stringify(b);
 const identity=(card:CardFields)=>card.prefabRef ?? card.id;
@@ -13,7 +14,7 @@ export function prefabSnapshot(state:CoreState,id:string):Tree {
  const visit=(id:string,parent:string|null,index:number,plane:PlanePlacement|null)=>{
   const card=state.cards.get(id);if(!card || card.deleted)return;
   const preferred=identity(card),key=seen.has(preferred)?id:preferred;seen.add(key);canonicalIds.set(id,key);
-  nodes.push({key,parent,index,title:card.title,content:card.content,doodle:card.doodle ?? null,layout:card.layout,type:card.type,plane});
+  nodes.push({key,parent,index,title:card.title,content:card.content,images:copyCardImages(card.images ?? []),doodle:card.doodle ?? null,layout:card.layout,type:card.type,plane});
   (state.children.get(id) ?? []).forEach((entry,i)=>visit(entry.id,key,i,'x' in entry?{x:entry.x,y:entry.y,w:entry.w,h:entry.h,z:entry.z}:null));
  };
  visit(id,null,0,null);return nodes.map(node=>({...node,doodle:node.doodle?remapInkCards(node.doodle,canonicalIds):null}));
@@ -25,7 +26,7 @@ function nodeIds(state:CoreState,root:string):Map<string,string> {
 }
 function baseline(s:Session,id:string):Tree {
  const card=s.state.cards.get(id)!;
- if(card.prefabBase)return JSON.parse(card.prefabBase) as Tree;
+ if(card.prefabBase)return (JSON.parse(card.prefabBase) as Tree).map(node=>({...node,images:copyCardImages(node.images ?? [])}));
  // Old instances have no recorded baseline: compare with their current template.
  return card.prefabRef?prefabSnapshot(s.state,card.prefabRef):[];
 }
@@ -36,7 +37,7 @@ export function rememberPrefabBases(s:Session):void {
 export function savePrefabBase(s:Session,id:string):void {
  setField(s,id,'/prefabBase',JSON.stringify(prefabSnapshot(s.state,id)));
 }
-const fields=['title','content','doodle','layout','type','parent','index','plane'] as const;
+const fields=['title','content','images','doodle','layout','type','parent','index','plane'] as const;
 /** Apply only source changes, keeping unrelated target edits. */
 function merge(before:Tree,after:Tree,target:Tree):Tree {
  const old=new Map(before.map(n=>[n.key,n])),now=new Map(after.map(n=>[n.key,n]));
@@ -46,7 +47,7 @@ function merge(before:Tree,after:Tree,target:Tree):Tree {
   const prev=old.get(node.key),existing=result.get(node.key);
   if(!prev){result.set(node.key,{...node});continue;}
   if(!existing){if(!equal(prev,node))result.set(node.key,{...node});continue;}
-  for(const field of fields)if(!equal(prev[field],node[field]))Object.assign(existing,{[field]:node[field]});
+  for(const field of fields)if(!equal(field==='images'?prev.images ?? []:prev[field],node[field]))Object.assign(existing,{[field]:node[field]});
  }
  // A target-only child of a removed node remains local, rehomed to the root.
  const root=after[0]?.key;
@@ -74,7 +75,7 @@ function applyDelta(s:Session,root:string,before:Tree,after:Tree,toPrefab:boolea
   if(index<0)throw new Error(uiText("core/prefab-sync.text001"));
   const node=pending.splice(index,1)[0]!;
   const parent=node.parent===null?root:ids.get(node.parent)!;
-  const id=createCard(s,{parentId:parent,title:node.title,content:node.content,doodle:node.doodle ?? null,layout:'plain',isPrefab:toPrefab,plane:node.plane ?? {x:32,y:32,w:220,h:120,z:node.index}});
+  const id=createCard(s,{parentId:parent,title:node.title,content:node.content,images:node.images,doodle:node.doodle ?? null,layout:'plain',isPrefab:toPrefab,plane:node.plane ?? {x:32,y:32,w:220,h:120,z:node.index}});
   ids.set(node.key,id);
   if(toPrefab)keys.set(node.key,id);else setField(s,id,'/prefabRef',node.key);
  }
@@ -91,7 +92,7 @@ function applyDelta(s:Session,root:string,before:Tree,after:Tree,toPrefab:boolea
  }
  for(const node of ordered){
   const id=ids.get(node.key)!,previous=oldNodes.get(node.key);
-  for(const field of ['title','content','doodle'] as const)setField(s,id,`/${field}`,field==='doodle'?(node.doodle?remapInkCards(node.doodle,ids):null):node[field]);
+  for(const field of ['title','content','images','doodle'] as const)setField(s,id,`/${field}`,field==='doodle'?(node.doodle?remapInkCards(node.doodle,ids):null):field==='images'?copyCardImages(node.images ?? []):node[field]);
   if(node.parent!==null && (!previous || previous.parent!==node.parent || previous.index!==node.index || !equal(previous.plane,node.plane))){
    moveCard(s,id,ids.get(node.parent)!,node.index,node.plane ?? {x:32,y:32,w:220,h:120,z:node.index});
   }

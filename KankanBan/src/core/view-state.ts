@@ -1,4 +1,5 @@
 import {isSkin,type SkinId} from './skins.ts';
+import {windowAnchor,newExpansionId} from './window-identity.ts';
 import {uiText} from '../i18n/text.ts';
 import {validCanvasBindings,type CanvasDragBindings} from './canvas-drag.ts';
 /**
@@ -8,8 +9,8 @@ import {validCanvasBindings,type CanvasDragBindings} from './canvas-drag.ts';
  * 不进事件日志、不进 git、不进 `tree.json`。换台机器看同一份工作区，
  * 窗口摆在哪、看到哪一层，本来就不该跟着走。
  *
- * 【窗口 id = 根卡 id】§2.8 不变量 W 说"窗口集合 ≡ 未删除的根卡"，
- * 所以窗口的身份就是那张根卡的 id，不需要再发一套 id。
+ * Window IDs identify desktop expansions, independently of tree nodes.
+ * The default view uses the card ID; additional views use cardID__nonce.
  *
  * 这里的文件**不是** WAL 的一部分：它随时可以丢，丢了只是窗口回到默认位置。
  * 所以写坏了不阻塞启动（读不动就退回空状态），与 `tree.json` 的严格校验刻意不同。
@@ -46,6 +47,8 @@ export const DEFAULT_CARD_RADIUS = 10;
 export const MAX_CARD_RADIUS = 40;
 
 export type ViewState = {
+  extensions?:Record<string,import('../extensions/registry.ts').ExtensionConfig>;
+  userSignature?: string;
   tutorialCardId?:string;
   skin?: SkinId;
   cardRadius?: number;
@@ -53,15 +56,8 @@ export type ViewState = {
   canvasDragBindings?: CanvasDragBindings;
   version: 2;
   windows: Record<CardId, WindowView>;
-  /**
-   * 现在（以及上次会话里）开着窗口的卡 —— §7.3 的"恢复集合"。
-   *
-   * 【v7：它现在是权威】旧 W 是"窗口集合 ≡ 未删除的根卡"，那时这个字段只是缓存；
-   * 用户定案「关闭卡片不影响任何结构，可以在 main 中重新打开」之后，权威拆成两半：
-   * 树（`desktopCards`）说"能不能有窗口"，**这个字段说"现在有没有窗口"**。
-   *
-   * 它仍然受不变量 W′ 约束：求值时一律与 `desktopCards` 求交
-   * （`openWindowSet`），所以一张被拖进容器或已删除的卡不会"复活"出一个窗口。
+  /** Dedicated desktop view IDs, independent of parentage.
+   * Their anchor cards must remain live; several views may share one anchor.
    */
   openWindows: CardId[];
 };
@@ -75,6 +71,11 @@ export function defaultRegions(): Record<Region, number> {
 export function emptyViewState(): ViewState {
   return { version: 2, windows: {}, openWindows: [] };
 }
+/** Active opening creates a new desktop view; restore/sync use stored IDs instead. */
+export function freshWindow(view:ViewState,cardId:string):{view:ViewState;windowId:string}{
+ const windowId=newExpansionId(cardId);
+ return {windowId,view:{...openWindow(view,windowId),windows:{...view.windows,[windowId]:{...windowViewFor(view,cardId),focusId:cardId,bounds:null}}}};
+}
 
 function noRegionCollapsed(): Record<Region, boolean> {
   return { breadcrumb: false, content: false, children: false };
@@ -85,7 +86,7 @@ export function windowViewFor(view: ViewState, windowId: CardId): WindowView {
   const existing = view.windows[windowId];
   if (existing !== undefined) return existing;
   return {
-    focusId: windowId,
+    focusId: windowAnchor(windowId),
     regions: defaultRegions(),
     collapsed: noRegionCollapsed(),
     bounds: null,
@@ -200,6 +201,8 @@ export function isWindowOpen(view: ViewState, windowId: CardId): boolean {
 
 /** 磁盘上的形状 —— 用宽松类型读，因为要容忍**旧版本**的文件。 */
 type StoredViewState = {
+  extensions?:ViewState['extensions'];
+  userSignature?: string;
   tutorialCardId?:unknown;
   skin?: unknown;
   cardRadius?: number;
@@ -235,6 +238,8 @@ export function readViewState(root: string, ops: FsOps = defaultFsOps()): ViewSt
 
   return {
     version: 2,
+    ...(parsed.extensions && typeof parsed.extensions==='object' && !Array.isArray(parsed.extensions)?{extensions:Object.fromEntries(Object.entries(parsed.extensions).filter(([id,value])=>/^[a-z][a-z0-9-]{0,63}$/.test(id) && value && typeof value.installed==='boolean' && typeof value.enabled==='boolean' && value.config && typeof value.config==='object' && !Array.isArray(value.config)))}:{}),
+    ...(typeof parsed.userSignature==='string'?{userSignature:parsed.userSignature}:{}),
     ...(typeof parsed.tutorialCardId==='string'?{tutorialCardId:parsed.tutorialCardId}:{}),
     skin:isSkin(parsed.skin)?parsed.skin:'light',
     canvasSwapButtons: parsed.canvasSwapButtons !== false,

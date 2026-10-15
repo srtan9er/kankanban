@@ -1,3 +1,5 @@
+import {EXTENDED_TOOLS} from './extended-tools.ts';
+import {collectSubtree} from '../core/subtree.ts';
 import {uiText} from '../i18n/text.ts';
 import { executeAction } from '../core/actions.ts';
 ﻿/**
@@ -14,15 +16,11 @@ import { executeAction } from '../core/actions.ts';
  */
 
 import {
-  createCard,
-  deleteCard,
   listChildren,
-  moveCard,
   readCard,
   readTree,
   search,
   setField,
-  setLayout,
   undoLast,
 } from '../core/workspace.ts';
 import type { Session } from '../core/workspace.ts';
@@ -37,6 +35,7 @@ export type JsonSchema = {
 
 export type ToolDef = {
   name: string;
+  execution?:'desktop';
   title: string;
   description: string;
   inputSchema: JsonSchema;
@@ -49,6 +48,7 @@ const LAYOUTS: Layout[] = ['columns', 'ordered', 'grid', 'library', 'plane', 'pl
 const CARD_ID = { type: 'string', description: uiText("mcp/tools.text001") } as const;
 
 export const TOOLS: readonly ToolDef[] = [
+ ...EXTENDED_TOOLS,
   {
     name: 'create_card',
     title: uiText("mcp/tools.text002"),
@@ -75,15 +75,8 @@ export const TOOLS: readonly ToolDef[] = [
     },
     handler: (session, args) => {
       const parentId = optionalNullableString(args, 'parentId');
-      const id = createCard(session, {
-        parentId: parentId ?? null,
-        title: requireString(args, 'title'),
-        content: optionalString(args, 'content'),
-        layout: optionalLayout(args, 'layout'),
-        type: optionalNullableString(args, 'type'),
-        isPrefab: optionalBoolean(args, 'isPrefab'),
-        plane: optionalPlane(args, 'plane'),
-      });
+      const result=executeAction(session,{kind:'create',parent:parentId ?? null,title:requireString(args,'title'),content:optionalString(args,'content'),layout:optionalLayout(args,'layout') ?? 'plain',type:optionalNullableString(args,'type'),prefab:optionalBoolean(args,'isPrefab') ?? false,plane:optionalPlane(args,'plane')});
+      const id=result.createdId!;
       return readCard(session, id);
     },
   },
@@ -124,6 +117,7 @@ export const TOOLS: readonly ToolDef[] = [
       const cardId = requireString(args, 'cardId');
       const path = requireString(args, 'path');
       if (!path.startsWith('/')) throw new Error(uiText("mcp/tools.text024", {arg0: (path)}));
+      if (path === '/doodle' || path.startsWith('/doodle/')) throw new Error(uiText('mcp/extended.doodleField'));
       const value = requirePresent(args, 'value');
       if ((path === '/title' || path === '/content') && typeof value === 'string') executeAction(session, { kind: 'edit', id: cardId, field: path === '/title' ? 'title' : 'content', value });
       else setField(session, cardId, path as `/${string}`, value);
@@ -160,7 +154,7 @@ export const TOOLS: readonly ToolDef[] = [
       const cardId = requireString(args, 'cardId');
       const layout = requireLayout(args, 'layout');
       const placements = optionalPlacements(args, 'placements');
-      setLayout(session, cardId, layout, placements === undefined ? {} : { placements });
+      executeAction(session,{kind:'layout',id:cardId,layout,placements});
       return readCard(session, cardId);
     },
   },
@@ -191,8 +185,8 @@ export const TOOLS: readonly ToolDef[] = [
       const toParentId = optionalNullableString(args, 'toParentId') ?? null;
       // 省略 index 时放到末尾。不能直接用一个大数：reducer 会对越界下标抛错。
       const index = optionalNumber(args, 'index') ?? (toParentId === null ? 0 : listChildren(session, toParentId).entries.length);
-      moveCard(session, cardId, toParentId, index, optionalPlane(args, 'plane'));
-      return { moved: true };
+      const result=executeAction(session,{kind:'move',id:cardId,parent:toParentId,index,plane:optionalPlane(args,'plane')});
+      return { moved: true,...result };
     },
   },
 
@@ -207,7 +201,7 @@ export const TOOLS: readonly ToolDef[] = [
       properties: { cardId: CARD_ID },
       required: ['cardId'],
     },
-    handler: (session, args) => ({ deletedCount: deleteCard(session, requireString(args, 'cardId')) }),
+    handler:(session,args)=>{const id=requireString(args,'cardId');const deletedCount=collectSubtree(session.state,id).ids.length;executeAction(session,{kind:'delete',id});return {deletedCount};},
   },
 
   {
@@ -314,17 +308,31 @@ export function findTool(name: string): ToolDef | undefined {
  * 不要在这里 catch 成空结果：AI 需要看到"为什么不行"才能改。§9.3 的"人机同一套操作层"
  * 也要求工具层不要给 AI 一套更弱的语义。
  */
-export function callTool(session: Session, name: string, args: Record<string, unknown> = {}): unknown {
-  const tool = findTool(name);
-  if (tool === undefined) {
-    throw new Error(uiText("mcp/tools.text061", {arg0: (name), arg1: (TOOLS.map((t) => t.name).join(', '))}));
+/** Validate at the desktop boundary as well as the stdio boundary. */
+export function validateToolCall(name:string,args:Record<string,unknown>):ToolDef {
+ const tool=findTool(name);
+ if(!tool)throw new Error(uiText("mcp/tools.text061",{arg0:name,arg1:TOOLS.map(t=>t.name).join(', ')}));
+ const validate=(value:unknown,schema:Record<string,unknown>,path:string):void=>{
+  const types=Array.isArray(schema.type)?schema.type:typeof schema.type==='string'?[schema.type]:[];
+  if(types.length && !types.some(type=>type==='null'?value===null:type==='array'?Array.isArray(value):type==='object'?value!==null && typeof value==='object' && !Array.isArray(value):type==='number'?typeof value==='number' && Number.isFinite(value):type==='integer'?typeof value==='number' && Number.isSafeInteger(value):typeof value===type))throw new Error(uiText('mcp/tools.invalidArguments',{arg0:path}));
+  if(typeof value==='number' && (typeof schema.minimum==='number' && value<schema.minimum || typeof schema.maximum==='number' && value>schema.maximum))throw new Error(uiText('mcp/tools.invalidArguments',{arg0:path}));
+  if(Array.isArray(schema.enum) && !schema.enum.includes(value))throw new Error(uiText('mcp/tools.invalidEnum',{arg0:path,arg1:schema.enum.map(String).join(' / ')}));
+  if(value!==null && typeof value==='object' && !Array.isArray(value)){
+   const record=value as Record<string,unknown>;
+   for(const key of (schema.required as string[]|undefined) ?? [])if(!Object.hasOwn(record,key) || record[key]===undefined)throw new Error(uiText('mcp/tools.invalidArguments',{arg0:`${path}.${key}`}));
+   const properties=(schema.properties ?? {}) as Record<string,Record<string,unknown>>;
+   for(const [key,item] of Object.entries(record)){
+    if(schema.additionalProperties===false && !Object.hasOwn(properties,key))throw new Error(uiText('mcp/tools.invalidArguments',{arg0:`${path}.${key}`}));
+    if(Object.hasOwn(properties,key) && item!==undefined)validate(item,properties[key]!,`${path}.${key}`);
+   }
   }
-
-  for (const key of tool.inputSchema.required ?? []) {
-    if (args[key] === undefined) throw new Error(uiText("mcp/tools.text062", {arg0: (name), arg1: (key)}));
-  }
-
-  return tool.handler(session, args);
+  if(Array.isArray(value) && schema.items)for(const [index,item] of value.entries())validate(item,schema.items as Record<string,unknown>,`${path}[${index}]`);
+ };
+ validate(args,tool.inputSchema as unknown as Record<string,unknown>,name);
+ return tool;
+}
+export function callTool(session: Session,name:string,args:Record<string,unknown>={}):unknown {
+ return validateToolCall(name,args).handler(session,args);
 }
 
 /** 给 `tools/list` 用的纯数据表示（去掉处理函数）。 */

@@ -1,3 +1,7 @@
+import {useContext} from 'react';
+import {EditMode} from './edit-mode.ts';
+import {ViewportInkToolbar} from './ViewportInkToolbar.tsx';
+import {AddIcon} from './AddIcon.tsx';
 import {inkPeriodEntries,projectInkCanvas,type InkDocument} from '../core/drawing.ts';
 import {useInk,useDoodleMode,InkPill,InkPicture} from './Ink.tsx';
 import {uiText} from '../i18n/text.ts';
@@ -21,11 +25,13 @@ export function CanvasViewport({parent,entries,visibleIds,renderCard,onCommit,on
  parent:string;entries:PlaneEntry[];visibleIds:Set<string>;renderCard:(id:string)=>ReactNode;
  onCommit:(id:string,x:number,y:number,w:number,h:number,period:PlaneSize)=>Promise<unknown>;nativeDrag:boolean;
 }) {
+ const {editable}=useContext(EditMode);
  const ink=useInk(drawing,(next,before)=>onDrawing({...next,width:latest.current.period.width,height:latest.current.period.height},before));
  const paintOrigin=useRef({x:0,y:0});
  const viewport=useRef<HTMLDivElement>(null);
  const mode=useDoodleMode(viewport,ink,undefined,()=>{settleView();frozenPeriod.current=latest.current.period;},()=>{void ink.flush().then(()=>scheduleNormalize(0)).catch(reason=>setError(String(reason)));});
- const drawingMode=mode.mode!==null;
+ const drawingMode=editable && mode.mode!==null;
+ useEffect(()=>{if(!editable && mode.mode)mode.toggle(mode.mode);},[editable,mode.mode]);
  const [,setOffset]=useState<Point>({x:0,y:0});
  const offsetRef=useRef<Point>({x:0,y:0});
  const surface=useRef<HTMLDivElement>(null);
@@ -192,6 +198,7 @@ export function CanvasViewport({parent,entries,visibleIds,renderCard,onCommit,on
  useEffect(()=>{
   const element=viewport.current;if(!element)return;
   const receive=(event:Event):void=>{
+   if(!editable)return;
    const drag=(event as CustomEvent<CanvasDrag>).detail;
    event.preventDefault();
    if(drag.phase==='leave'){if(!local.current && !pending.current)show(null);return;}
@@ -215,7 +222,8 @@ export function CanvasViewport({parent,entries,visibleIds,renderCard,onCommit,on
   settleView();
   const target=event.target as HTMLElement, card=target.closest<HTMLElement>('.canvas-card');
   if(target.closest('button'))return false;
-  const pan=dragBindings[canvasGesture(event.button,event.buttons)]==='pan';
+  const pan=(!card || event.button!==0) && dragBindings[canvasGesture(event.button,event.buttons)]==='pan';
+  if(!editable && !pan)return false;
   if(!pan && rebaseFlight.current)return false;
   if(pan && rebaseTimer.current){clearTimeout(rebaseTimer.current);rebaseTimer.current=null;}
   if(!pan && (event.button!==0 && event.button!==2 || !card || target.closest('button')))return false;
@@ -288,7 +296,7 @@ export function CanvasViewport({parent,entries,visibleIds,renderCard,onCommit,on
     style={{left:e.x,top:e.y,width:Math.max(CARD_MIN_WIDTH,e.w),height:Math.max(CARD_MIN_HEIGHT,e.h),zIndex:e.z}}>{renderCard(e.id)}</div>)}
   </div>);
  }
- return <div ref={viewport} className="canvas-viewport" data-doodle-active={drawingMode} data-drop-parent={parent} data-drop-index={entries.length}
+ return <div ref={viewport} className="canvas-viewport" data-doodle-active={drawingMode} data-drop-parent={editable?parent:undefined} data-drop-index={editable?entries.length:undefined}
   data-canvas-zoom={zoom} data-canvas-pan-x={view.x} data-canvas-pan-y={view.y} data-canvas-period-width={tile.width} data-canvas-period-height={tile.height}
   onPointerDownCapture={begin} onDragStartCapture={e=>{if(!nativeDrag && local.current)e.preventDefault();}}
   onContextMenuCapture={e=>{e.preventDefault();e.stopPropagation();}} onAuxClick={e=>{e.preventDefault();e.stopPropagation();}}
@@ -301,9 +309,9 @@ export function CanvasViewport({parent,entries,visibleIds,renderCard,onCommit,on
    if(event.type==='pointerdown')paintOrigin.current={x:Math.floor(world.x/tile.width)*tile.width,y:Math.floor(world.y/tile.height)*tile.height};
    return {x:world.x-paintOrigin.current.x,y:world.y-paintOrigin.current.y};
   },undefined,2)}/> }
-  <div className="canvas-ink-toolbar"><InkPill mode={mode.mode} toggle={mode.toggle}/></div>
+  {editable && <ViewportInkToolbar anchor={viewport}><InkPill mode={mode.mode} toggle={mode.toggle}/></ViewportInkToolbar>}
   {!entries.length && !ink.document.strokes.length && !drawingMode && !preview && <div className="canvas-empty">{uiText("webview/CanvasViewport.text002")}</div>}
-  <button disabled={drawingMode} className="floating-add-card" aria-label={uiText("webview/CanvasViewport.text003")} title={uiText("webview/CanvasViewport.text003")} onClick={()=>onCreate(positiveModulo((extent.width/2-offsetRef.current.x)/zoomRef.current,period.width),positiveModulo((extent.height/2-offsetRef.current.y)/zoomRef.current,period.height))}>＋</button>
+  <button disabled={drawingMode} className="floating-add-card" aria-label={uiText("webview/CanvasViewport.text003")} title={uiText("webview/CanvasViewport.text003")} onClick={()=>onCreate(positiveModulo((extent.width/2-offsetRef.current.x)/zoomRef.current,period.width),positiveModulo((extent.height/2-offsetRef.current.y)/zoomRef.current,period.height))}><AddIcon/></button>
   {(error || ink.error) && <div className="canvas-error" role="alert">{error || ink.error}</div>}
  </div>;
 }
