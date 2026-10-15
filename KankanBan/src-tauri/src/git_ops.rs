@@ -3,6 +3,12 @@ use std::{fs,io::{Read,Write},path::{Path,PathBuf,Component},process::{Command,S
 use base64::Engine;
 const LIMIT:u64=8*1024*1024;
 fn error(key:&str)->String{crate::i18n::text(key,&[])}
+fn development_source_repository(root:&Path)->bool{
+ cfg!(debug_assertions) && fs::canonicalize(env!("CARGO_MANIFEST_DIR")).is_ok_and(|source|source.starts_with(root))
+}
+fn ensure_worktree_write_allowed(root:&Path,method:&str)->Result<(),String>{
+ if development_source_repository(root) && ["switch","merge","pull","discard","resolve","abortMerge"].contains(&method){return Err(error("git.developmentSourceWarning"));}Ok(())
+}
 pub fn protected(path:&str)->bool{path.replace('\\',"/").split('/').any(|p|p.eq_ignore_ascii_case(".kkb") || p.eq_ignore_ascii_case(".git"))}
 pub fn canonical_directory(root:&Path)->Result<PathBuf,String>{let p=fs::canonicalize(root).map_err(|_|error("git.invalidPath"))?;if !p.is_dir() || p.parent().is_none() || protected(&p.to_string_lossy()){return Err(error("git.invalidPath"));}Ok(p)}
 pub fn validate_config(args:&Value,default:&Path)->Result<PathBuf,String>{
@@ -32,12 +38,27 @@ fn run(root:&Path,args:&[String])->Result<Vec<u8>,String>{let (ok,out,err)=raw(r
 fn text(root:&Path,args:&[&str])->Result<String,String>{Ok(String::from_utf8_lossy(&run(root,&strings(args))?).trim().to_owned())}
 fn strarg<'a>(args:&'a Value,key:&str)->Result<&'a str,String>{let v=args[key].as_str().ok_or_else(||error("git.invalid"))?;if v.is_empty() || v.contains(['\0','\r','\n']) || v.len()>4096{return Err(error("git.invalid"));}Ok(v)}
 fn paths(args:&Value)->Result<Vec<String>,String>{let a=args["paths"].as_array().ok_or_else(||error("git.invalid"))?;if a.is_empty() || a.len()>1000{return Err(error("git.invalid"));}a.iter().map(|v|{let p=v.as_str().ok_or_else(||error("git.invalidPath"))?.replace('\\',"/");if p.is_empty() || protected(&p) || p.contains(['\0','\r','\n']) || Path::new(&p).components().any(|c|!matches!(c,Component::Normal(_))){return Err(error("git.invalidPath"));}Ok(p)}).collect()}
+fn index_paths(root:&Path,args:&Value)->Result<Vec<String>,String>{
+ let mut selected=paths(args)?;let entries=zero_paths(&run(root,&strings(&["status","--porcelain=v1","-z","--untracked-files=all"]))?);let mut i=0;
+ while i<entries.len(){let row=&entries[i];i+=1;if row.len()<3 || !row.as_bytes()[..2].is_ascii() || row.as_bytes()[2]!=b' '{return Err(error("git.invalid"));}
+  let renamed=row.as_bytes()[..2].contains(&b'R');let copied=row.as_bytes()[..2].contains(&b'C');if !renamed&&!copied{continue;}
+  let original=entries.get(i).ok_or_else(||error("git.invalid"))?;i+=1;let current=&row[3..];
+  if renamed&&(selected.iter().any(|p|p==current||p==original)){if !selected.iter().any(|p|p==current){selected.push(current.to_owned());}if !selected.contains(original){selected.push(original.clone());}}
+ }
+ let validated=paths(&json!({"paths":selected}))?;for path in &validated{safe_path(root,path)?;}Ok(validated)
+}
+fn ensure_expected_repository(args:&Value,directory:&Path,root:&Path)->Result<(),String>{
+ if let Some(expected)=args.get("repository"){let path=expected.as_str().ok_or_else(||error("git.invalid"))?;let expected=canonical_directory(Path::new(path))?;if expected!=directory && expected!=root{return Err(error("git.repositoryChanged"));}}
+ Ok(())
+}
 fn ensure_ignore(root:&Path)->Result<(),String>{
  let path=root.join(".gitignore");if path.is_symlink(){return Err(error("git.invalidPath"));}
- let source=if path.exists(){fs::read_to_string(&path).map_err(|e|e.to_string())?}else{String::new()};
- let mut ignored=false;for line in source.lines(){let s=line.trim();if [".kkb/","/.kkb/",".kkb","/.kkb"].contains(&s){ignored=true;}if s.starts_with('!') && (s.contains(".kkb") || s=="!*"){ignored=false;}}
+ let source=if path.exists(){fs::read(&path).map_err(|e|e.to_string())?}else{Vec::new()};
+ // Git ignore rules are byte-oriented; legacy comments need not be UTF-8.
+ // Decode only for finding our ASCII rule; never re-encode the existing file.
+ let mut ignored=false;for line in String::from_utf8_lossy(&source).lines(){let s=line.trim();if [".kkb/","/.kkb/",".kkb","/.kkb"].contains(&s){ignored=true;}if s.starts_with('!') && (s.contains(".kkb") || s=="!*"){ignored=false;}}
  if ignored {ignored=raw(root,&strings(&["check-ignore","--no-index","--quiet","--",".kkb/__kkb_probe__"]))?.0;}
- if !ignored{let mut file=fs::OpenOptions::new().create(true).append(true).open(&path).map_err(|e|e.to_string())?;if !source.is_empty() && !source.ends_with('\n'){file.write_all(b"\n").map_err(|e|e.to_string())?;}file.write_all(b"\n.kkb/\n").map_err(|e|e.to_string())?;file.sync_all().map_err(|e|e.to_string())?;}
+ if !ignored{let mut file=fs::OpenOptions::new().create(true).append(true).open(&path).map_err(|e|e.to_string())?;if !source.is_empty() && !source.ends_with(b"\n"){file.write_all(b"\n").map_err(|e|e.to_string())?;}file.write_all(b"\n.kkb/\n").map_err(|e|e.to_string())?;file.sync_all().map_err(|e|e.to_string())?;}
  Ok(())
 }
 fn zero_paths(data:&[u8])->Vec<String>{data.split(|b|*b==0).filter(|v|!v.is_empty()).map(|v|String::from_utf8_lossy(v).into_owned()).collect()}
@@ -89,15 +110,15 @@ pub fn execute_desktop(directory:&Path,method:&str,args:&Value)->Result<Value,St
 }
 pub fn execute(directory:&Path,method:&str,args:&Value)->Result<Value,String>{
  let directory=canonical_directory(directory)?;
- if method=="init"{run(&directory,&strings(&["init","-b","main"]))?;ensure_ignore(&directory)?;return Ok(json!({"initialized":true}));}
- if method=="clone"{let url=strarg(args,"url")?;validate_url(url)?;if fs::read_dir(&directory).map_err(|e|e.to_string())?.next().is_some(){return Err(error("git.invalidPath"));}run(&directory,&strings(&["clone","--",url,"."]))?;ensure_ignore(&directory)?;return Ok(json!({"cloned":true}));}
+ if method=="init"{ensure_expected_repository(args,&directory,&directory)?;run(&directory,&strings(&["init","-b","main"]))?;ensure_ignore(&directory)?;return Ok(json!({"initialized":true}));}
+ if method=="clone"{ensure_expected_repository(args,&directory,&directory)?;let url=strarg(args,"url")?;validate_url(url)?;if fs::read_dir(&directory).map_err(|e|e.to_string())?.next().is_some(){return Err(error("git.invalidPath"));}run(&directory,&strings(&["clone","--",url,"."]))?;ensure_ignore(&directory)?;return Ok(json!({"cloned":true}));}
  let (ok,out,diagnostic)=raw(&directory,&strings(&["rev-parse","--show-toplevel"]))?;
  if !ok{
   let marker=directory.ancestors().any(|p|fs::symlink_metadata(p.join(".git")).is_ok());
   if !marker && diagnostic.contains("not a git repository"){if method=="status"{return Ok(json!({"repository":false,"root":crate::desktop::display_path(&directory)}));}return Err(error("git.noRepo"));}
   return Err(crate::i18n::text("git.repositoryProbeFailed",&[("arg0",crate::desktop::display_path(&directory)),("arg1",diagnostic.trim().to_owned())]));
  }
- let root=canonical_directory(Path::new(String::from_utf8_lossy(&out).trim()))?;ensure_ignore(&root)?;
+ let root=canonical_directory(Path::new(String::from_utf8_lossy(&out).trim()))?;ensure_expected_repository(args,&directory,&root)?;ensure_worktree_write_allowed(&root,method)?;ensure_ignore(&root)?;
  if directory!=root && directory.join(".kkb").exists(){ensure_ignore(&directory)?;}
  let protected_files=protected_tracked(&root)?;
  if let Some(list)=args["paths"].as_array(){for path in list{if let Some(path)=path.as_str(){safe_path(&root,path)?;}}}
@@ -119,7 +140,7 @@ pub fn execute(directory:&Path,method:&str,args:&Value)->Result<Value,String>{
   let counts=text(&root,&["rev-list","--left-right","--count","HEAD...@{upstream}"]).unwrap_or_default();let mut counts=counts.split_whitespace();let ahead=counts.next().unwrap_or("0").parse::<u64>().unwrap_or(0);let behind=counts.next().unwrap_or("0").parse::<u64>().unwrap_or(0);
   let merge_file=text(&root,&["rev-parse","--git-path","MERGE_HEAD"])?;let merging=root.join(merge_file).exists();
   let head=text(&root,&["rev-parse","--verify","HEAD"]).unwrap_or_default();let refs_state=refs.iter().map(|r|format!("{} {}",r.full,r.object)).collect::<Vec<_>>().join("\n");
-  Ok(json!({"repository":true,"root":crate::desktop::display_path(&root),"branch":branch,"head":head,"refsState":refs_state,"files":files,"refs":refs.iter().map(|r|&r.name).collect::<Vec<_>>(),"remotes":remotes.lines().collect::<Vec<_>>(),"upstream":upstream,"ahead":ahead,"behind":behind,"merging":merging,"protectedFiles":protected_files}))
+  Ok(json!({"repository":true,"root":crate::desktop::display_path(&root),"developmentSource":development_source_repository(&root),"branch":branch,"head":head,"refsState":refs_state,"files":files,"refs":refs.iter().map(|r|&r.name).collect::<Vec<_>>(),"remotes":remotes.lines().collect::<Vec<_>>(),"upstream":upstream,"ahead":ahead,"behind":behind,"merging":merging,"protectedFiles":protected_files}))
  },
  "graph"=>{
   let offset=args["offset"].as_u64().unwrap_or(0);if offset>100000{return Err(error("git.invalid"));}
@@ -144,7 +165,7 @@ pub fn execute(directory:&Path,method:&str,args:&Value)->Result<Value,String>{
   Ok(json!({"text":preview,"binary":binary,"beforeImage":image(&before,&path),"afterImage":image(&after,&path)}))
  },
  "compare"=>{let a=ensure_target_for_read(&root,strarg(args,"base")?)?;let b=ensure_target_for_read(&root,strarg(args,"tip")?)?;Ok(json!({"text":text(&root,&["diff","--no-ext-diff","--no-textconv",&a,&b,"--",".",":(exclude,icase,glob)**/.kkb/**",":(exclude,icase).kkb/**"])?}))},
- "stage"|"unstage"=>{let p=paths(args)?;let mut cmd=if method=="stage"{strings(&["add","--"])}else if text(&root,&["rev-parse","--verify","HEAD"]).is_ok(){strings(&["reset","--quiet","HEAD","--"])}else{strings(&["rm","--cached","--ignore-unmatch","--"])};cmd.extend(p.iter().map(|p|format!(":(literal){p}")));run(&root,&cmd)?;Ok(json!({"changed":true}))},
+ "stage"|"unstage"=>{let p=if method=="unstage"{index_paths(&root,args)?}else{paths(args)?};let mut cmd=if method=="stage"{strings(&["add","--"])}else if text(&root,&["rev-parse","--verify","HEAD"]).is_ok(){strings(&["reset","--quiet","HEAD","--"])}else{strings(&["rm","--cached","--ignore-unmatch","--"])};cmd.extend(p.iter().map(|p|format!(":(literal){p}")));run(&root,&cmd)?;Ok(json!({"changed":true}))},
  "stageAll"=>{let all=zero_paths(&run(&root,&strings(&["ls-files","-z","--cached","--others","--exclude-standard"]))?).into_iter().filter(|p|!protected(p)).collect::<Vec<_>>();for batch in all.chunks(64){let mut cmd=strings(&["add","-A","--"]);cmd.extend(batch.iter().map(|p|format!(":(literal){p}")));run(&root,&cmd)?;}Ok(json!({"changed":true}))},
  "unstageAll"=>{if text(&root,&["rev-parse","--verify","HEAD"]).is_ok(){run(&root,&strings(&["reset","--quiet","HEAD","--",".",":(exclude,icase,glob)**/.kkb/**",":(exclude,icase).kkb/**"]))?;}else{let all=zero_paths(&run(&root,&strings(&["ls-files","-z"]))?).into_iter().filter(|p|!protected(p)).collect::<Vec<_>>();if !all.is_empty(){let mut cmd=strings(&["rm","--cached","--ignore-unmatch","--"]);cmd.extend(all.iter().map(|p|format!(":(literal){p}")));run(&root,&cmd)?;}}Ok(json!({"changed":true}))},
  "commit"=>{let message=args["message"].as_str().ok_or_else(||error("git.invalid"))?;if message.contains('\0') || message.len()>100000 || message.trim().is_empty(){return Err(error("git.invalid"));}let staged=zero_paths(&run(&root,&strings(&["diff","--cached","--name-only","-z"]))?);if staged.is_empty(){return Err(error("git.noStaged"));}let additions=zero_paths(&run(&root,&strings(&["diff","--cached","--diff-filter=ACMRTUXB","--name-only","-z"]))?);if additions.iter().any(|p|protected(p)){return Err(error("git.protectedError"));}let out=text(&root,&["commit","-m",message])?;Ok(json!({"output":out}))},
@@ -168,6 +189,24 @@ fn validate_url(url:&str)->Result<(),String>{if url.starts_with('-') || url.cont
 #[cfg(test)]
 mod tests {
  use super::*;
+ #[test] fn stale_window_cannot_discard_a_file_in_another_repository(){
+  let first=fixture();let second=fixture();execute(&first,"init",&json!({})).unwrap();execute(&second,"init",&json!({})).unwrap();fs::write(second.join("same.txt"),"keep this repository").unwrap();
+  let result=execute(&second,"discard",&json!({"repository":first.to_string_lossy(),"paths":["same.txt"],"confirmed":true}));assert!(result.is_err(),"a window bound to another repository must not write here");assert_eq!(fs::read_to_string(second.join("same.txt")).unwrap(),"keep this repository");for p in [first,second]{fs::remove_dir_all(p).unwrap();}
+ }
+ #[test] fn unstaging_a_rename_restores_both_index_paths_and_keeps_the_working_file(){
+  let p=fixture();execute(&p,"init",&json!({})).unwrap();git(&p,&["config","user.name","Test"]);git(&p,&["config","user.email","test@example.invalid"]);fs::write(p.join("before.txt"),"content").unwrap();execute(&p,"stageAll",&json!({})).unwrap();execute(&p,"commit",&json!({"message":"Base"})).unwrap();git(&p,&["mv","before.txt","after.txt"]);
+  execute(&p,"unstage",&json!({"paths":["after.txt"]})).unwrap();assert!(text(&p,&["diff","--cached","--name-only"]).unwrap().is_empty(),"unstaging a rename must not leave the original path staged as deleted");assert_eq!(fs::read_to_string(p.join("after.txt")).unwrap(),"content");assert!(!p.join("before.txt").exists());fs::remove_dir_all(p).unwrap();
+ }
+ #[test] fn development_source_worktree_changes_are_blocked_without_blocking_staging(){
+  let source=canonical_directory(Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap().parent().unwrap()).unwrap();
+  for method in ["switch","merge","pull","discard","resolve","abortMerge"]{assert_eq!(ensure_worktree_write_allowed(&source,method).is_err(),cfg!(debug_assertions),"development source guard for {method}");}
+  for method in ["status","graph","stage","unstage","stageAll","unstageAll","commit","fetch","push"]{assert!(ensure_worktree_write_allowed(&source,method).is_ok());}
+  let p=fixture();assert!(ensure_worktree_write_allowed(&canonical_directory(&p).unwrap(),"switch").is_ok());fs::remove_dir_all(p).unwrap();
+ }
+ #[test] fn non_utf8_ignore_comments_do_not_break_stage_unstage_or_discard(){
+  let p=fixture();git(&p,&["init","-b","main"]);let ignore=b"# legacy comment \xff\n.kkb/\n";fs::write(p.join(".gitignore"),ignore).unwrap();fs::write(p.join("new.txt"),"keep until discarded").unwrap();
+  execute(&p,"stage",&json!({"paths":["new.txt"]})).unwrap();execute(&p,"unstage",&json!({"paths":["new.txt"]})).unwrap();assert_eq!(fs::read_to_string(p.join("new.txt")).unwrap(),"keep until discarded");execute(&p,"discard",&json!({"paths":["new.txt"],"confirmed":true})).unwrap();assert!(!p.join("new.txt").exists());assert_eq!(fs::read(p.join(".gitignore")).unwrap(),ignore);fs::remove_dir_all(p).unwrap();
+ }
  #[test] fn only_public_commit_references_are_listed_and_graphed(){
   let p=fixture();execute(&p,"init",&json!({})).unwrap();git(&p,&["config","user.name","Test"]);git(&p,&["config","user.email","test@example.invalid"]);fs::write(p.join("project"),"base").unwrap();execute(&p,"stageAll",&json!({})).unwrap();execute(&p,"commit",&json!({"message":"Public base"})).unwrap();
   let tree=text(&p,&["rev-parse","HEAD^{tree}"]).unwrap();git(&p,&["update-ref","refs/codex/checkpoint-tree",&tree]);git(&p,&["update-ref","refs/codex/checkpoint-commit","HEAD"]);git(&p,&["tag","tree-only",&tree]);git(&p,&["tag","release"]);git(&p,&["tag","-a","annotated","-m","Release"]);

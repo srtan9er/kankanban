@@ -14,3 +14,5 @@
 
 .extension-list{padding:16px;display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start}.extension-list .task-card{width:var(--card-min-width);min-height:var(--card-min-height);display:flex;flex-direction:column;gap:8px}.extension-controls{display:flex;flex-wrap:wrap;gap:5px}.extension-controls button{font:inherit;font-size:11px;cursor:pointer}.extension-list small{color:var(--muted)}
 .extension-list textarea{width:100%;min-height:80px;font:11px Consolas,monospace;border:1px solid var(--palette-card-border);color:var(--text);background:var(--surface);resize:vertical}
+
+.git-dev-warning{flex-shrink:0;padding:7px 14px;font-size:11px;color:var(--text);background:var(--git-hover);border-bottom:1px solid var(--git-divider)}

@@ -1105,6 +1105,8 @@
     "trackedProtected": "检测到已跟踪的 .kkb 文件。先停止跟踪后才能执行项目写操作。",
     "untrack": "保留本地文件并停止跟踪 .kkb",
     "confirmUntrack": "仅从 Git 暂存索引移除 .kkb，保留磁盘文件。删除记录会出现在下一次提交中。继续吗？",
+    "repositoryChanged": "仓库已在其他窗口中更改，请先刷新当前窗口后重试。",
+    "developmentSourceWarning": "当前为源码开发模式，此仓库包含正在运行的 KankanBan 源码。已禁用会改写工作文件的操作，请使用安装版或其他测试仓库；暂存和提交仍可使用。",
     "repositoryProbeFailed": "无法读取 Git 仓库 {arg0}：{arg1}",
     "noRepo": "此目录还不是 Git 仓库，可初始化或克隆。",
     "empty": "暂无提交",

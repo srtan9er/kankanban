@@ -13,6 +13,29 @@ import {emptyViewState} from '../src/core/view-state.ts';
 import {uiText} from '../src/i18n/text.ts';
 import {GitPanel} from '../src/webview/GitPanel.tsx';
 
+test('development-source repository explains blocked worktree writes while keeping stage controls available',async()=>{
+ const buffer=createBufferedFs(),c=new WorkspaceController(openSession('/source-ui',{ops:buffer.ops}),emptyViewState(),buffer,toAsync(createMemoryFs().ops)),host=document.createElement('div'),root=createRoot(host);let next=0;const jobs=new Map<number,unknown>();
+ const send=async(r:Request):Promise<{createdId?:string;toolResult?:unknown}>=>{if(r.kind==='extension-invoke'){jobs.set(++next,r.method==='status'?{repository:true,developmentSource:true,root:'/source',branch:'main',refs:['main','feature'],files:[{path:'file.txt',index:' ',worktree:'M',original:null,conflict:false}]}:r.method==='graph'?{commits:[],nextOffset:null}:{text:'patch'});return {toolResult:{jobId:next}};}if(r.kind==='extension-job')return {toolResult:{state:'done',result:jobs.get(r.jobId)}};return {};};
+ try{await act(async()=>root.render(createElement(GitPanel,{controller:c,send})));assert.ok(host.querySelector('.git-dev-warning')?.textContent?.includes(uiText('git.developmentSourceWarning')));await act(async()=>host.querySelector<HTMLButtonElement>('[data-git-trigger=branch]')!.click());const switchButton=[...host.querySelectorAll<HTMLButtonElement>('button')].find(b=>b.textContent===uiText('git.switchBranch'))!;assert.equal(switchButton.disabled,true);assert.equal(switchButton.title,uiText('git.developmentSourceWarning'));
+  await act(async()=>[...host.querySelectorAll<HTMLButtonElement>('.git-tabs button')].find(b=>b.textContent?.includes(uiText('git.changes')))!.click());assert.equal(host.querySelector<HTMLInputElement>('.git-file-row input')!.disabled,false);await act(async()=>host.querySelector<HTMLButtonElement>('.git-file-row button')!.click());const actions=[...host.querySelectorAll<HTMLButtonElement>('.git-changes-workspace button')];assert.equal(actions.find(b=>b.textContent===uiText('git.discard'))!.disabled,true);assert.equal(actions.find(b=>b.textContent===uiText('git.stage'))!.disabled,false);
+ }finally{await act(async()=>root.unmount());}
+});
+
+test('stage and unstage refresh the selected diff and discard clears vanished file actions',async()=>{
+ const buffer=createBufferedFs(),c=new WorkspaceController(openSession('/files-ui',{ops:buffer.ops}),emptyViewState(),buffer,toAsync(createMemoryFs().ops)),host=document.createElement('div'),root=createRoot(host);let staged=false,present=true,next=0;const jobs=new Map<number,unknown>(),confirm=window.confirm;window.confirm=()=>true;
+ const send=async(r:Request):Promise<{createdId?:string;toolResult?:unknown}>=>{
+  if(r.kind==='extension-invoke'){if(r.method==='stage')staged=true;if(r.method==='unstage')staged=false;if(r.method==='discard')present=false;const result=r.method==='status'?{repository:true,root:'/repo',branch:'main',refs:['main'],files:present?[{path:'note.txt',original:null,index:staged?'M':' ',worktree:staged?' ':'M',conflict:false}]:[]}:r.method==='graph'?{commits:[],nextOffset:null}:r.method==='diff'?{text:r.args.staged?'staged patch':'working patch'}:{};jobs.set(++next,result);return {toolResult:{jobId:next}};}
+  if(r.kind==='extension-job')return {toolResult:{state:'done',result:jobs.get(r.jobId)}};return {};
+ };
+ const action=(label:string)=>[...host.querySelectorAll<HTMLButtonElement>('.git-changes-workspace button')].find(b=>b.textContent===label);
+ try{
+  await act(async()=>root.render(createElement(GitPanel,{controller:c,send})));await act(async()=>[...host.querySelectorAll<HTMLButtonElement>('.git-tabs button')].find(b=>b.textContent?.includes(uiText('git.changes')))!.click());await act(async()=>host.querySelector<HTMLButtonElement>('.git-file-row button')!.click());assert.ok(host.textContent?.includes('working patch'));
+  await act(async()=>host.querySelector<HTMLInputElement>('.git-file-row input')!.click());assert.ok(action(uiText('git.unstage')),'selected file must follow its new staged state');assert.ok(host.textContent?.includes('staged patch'),'diff must refresh after staging');assert.ok(!action(uiText('git.discard')));
+  await act(async()=>action(uiText('git.unstage'))!.click());assert.ok(action(uiText('git.stage')));assert.ok(host.textContent?.includes('working patch'));
+  await act(async()=>action(uiText('git.discard'))!.click());assert.ok(!action(uiText('git.discard')),'clean/deleted file must not leave stale destructive actions');assert.ok(!host.textContent?.includes('working patch'));assert.ok(host.textContent?.includes(uiText('git.clean')));
+ }finally{await act(async()=>root.unmount());window.confirm=confirm;}
+});
+
 test('refresh is manual with no interval; a requested refresh preserves paths and queues actions',async()=>{
  const buffer=createBufferedFs(),c=new WorkspaceController(openSession('/refresh-ui',{ops:buffer.ops}),emptyViewState(),buffer,toAsync(createMemoryFs().ops)),host=document.createElement('div'),root=createRoot(host);
  const interval=globalThis.setInterval,clear=globalThis.clearInterval;let timers=0,polling=false,release!:()=>void;const wait=new Promise<void>(resolve=>{release=resolve;});let next=0;const jobs=new Map<number,string>(),calls:string[]=[];
