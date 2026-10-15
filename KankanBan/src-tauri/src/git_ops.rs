@@ -42,6 +42,16 @@ fn ensure_ignore(root:&Path)->Result<(),String>{
 }
 fn zero_paths(data:&[u8])->Vec<String>{data.split(|b|*b==0).filter(|v|!v.is_empty()).map(|v|String::from_utf8_lossy(v).into_owned()).collect()}
 fn protected_tracked(root:&Path)->Result<Vec<String>,String>{Ok(zero_paths(&run(root,&strings(&["ls-files","-z"]))?).into_iter().filter(|p|protected(p)).collect())}
+struct CommitReference {full:String,name:String,object:String}
+fn commit_references(root:&Path)->Result<Vec<CommitReference>,String>{
+ let output=text(root,&["for-each-ref","--format=%(refname)%00%(refname:short)%00%(objecttype)%00%(*objecttype)%00%(objectname)","refs/heads","refs/remotes","refs/tags"])?;
+ let mut refs=Vec::new();
+ for line in output.lines(){let fields=line.split('\0').collect::<Vec<_>>();if fields.len()!=5{return Err(error("git.invalid"));}
+  let commit=fields[2]=="commit" || (fields[2]=="tag" && fields[3]=="commit") || (fields[2]=="tag" && fields[3]=="tag" && ensure_target_for_read(root,fields[0]).is_ok());
+  if commit{refs.push(CommitReference{full:fields[0].to_owned(),name:fields[1].to_owned(),object:fields[4].to_owned()});}
+ }
+ Ok(refs)
+}
 fn ensure_push_history(root:&Path,remote:&str)->Result<(),String>{
  // Refresh remote reachability; deletion-only commits may remove already published data,
  // but new commits containing private board content must never be uploaded by KKB.
@@ -103,19 +113,20 @@ pub fn execute(directory:&Path,method:&str,args:&Value)->Result<Value,String>{
    let conflict=["DD","AU","UD","UA","DU","AA","UU"].contains(&&row[..2]);files.push(json!({"path":path,"original":original,"index":index,"worktree":worktree,"conflict":conflict}));
   }
   let branch=text(&root,&["branch","--show-current"])?;
-  let refs=text(&root,&["for-each-ref","--format=%(refname:short)"])?;
+  let refs=commit_references(&root)?;
   let remotes=text(&root,&["remote"])?;
   let upstream=text(&root,&["rev-parse","--abbrev-ref","--symbolic-full-name","@{upstream}"]).unwrap_or_default();
   let counts=text(&root,&["rev-list","--left-right","--count","HEAD...@{upstream}"]).unwrap_or_default();let mut counts=counts.split_whitespace();let ahead=counts.next().unwrap_or("0").parse::<u64>().unwrap_or(0);let behind=counts.next().unwrap_or("0").parse::<u64>().unwrap_or(0);
   let merge_file=text(&root,&["rev-parse","--git-path","MERGE_HEAD"])?;let merging=root.join(merge_file).exists();
-  let head=text(&root,&["rev-parse","--verify","HEAD"]).unwrap_or_default();let refs_state=text(&root,&["for-each-ref","--format=%(refname) %(objectname)"])?;
-  Ok(json!({"repository":true,"root":crate::desktop::display_path(&root),"branch":branch,"head":head,"refsState":refs_state,"files":files,"refs":refs.lines().collect::<Vec<_>>(),"remotes":remotes.lines().collect::<Vec<_>>(),"upstream":upstream,"ahead":ahead,"behind":behind,"merging":merging,"protectedFiles":protected_files}))
+  let head=text(&root,&["rev-parse","--verify","HEAD"]).unwrap_or_default();let refs_state=refs.iter().map(|r|format!("{} {}",r.full,r.object)).collect::<Vec<_>>().join("\n");
+  Ok(json!({"repository":true,"root":crate::desktop::display_path(&root),"branch":branch,"head":head,"refsState":refs_state,"files":files,"refs":refs.iter().map(|r|&r.name).collect::<Vec<_>>(),"remotes":remotes.lines().collect::<Vec<_>>(),"upstream":upstream,"ahead":ahead,"behind":behind,"merging":merging,"protectedFiles":protected_files}))
  },
  "graph"=>{
   let offset=args["offset"].as_u64().unwrap_or(0);if offset>100000{return Err(error("git.invalid"));}
   let count=args["limit"].as_u64().unwrap_or(60).clamp(1,200);
-  let (ok,out,_)=raw(&root,&strings(&["log","--all","--topo-order",&format!("--skip={offset}"),&format!("-{}",count+1),"--format=%H%x00%P%x00%an%x00%aI%x00%s%x00%D%x00"]))?;
-  if !ok {return Ok(json!({"commits":[],"nextOffset":null}));}
+  let mut starts=commit_references(&root)?.into_iter().map(|r|r.full).collect::<Vec<_>>();if let Ok(head)=ensure_target_for_read(&root,"HEAD"){starts.push(head);}
+  if starts.is_empty(){return Ok(json!({"commits":[],"nextOffset":null}));}
+  let mut command=strings(&["log","--topo-order",&format!("--skip={offset}"),&format!("-{}",count+1),"--decorate=short","--decorate-refs=HEAD","--decorate-refs=refs/heads/*","--decorate-refs=refs/remotes/*","--decorate-refs=refs/tags/*","--format=%H%x00%P%x00%an%x00%aI%x00%s%x00%D%x00"]);command.extend(starts);command.push("--".into());let out=run(&root,&command)?;
   let cells=out.split(|b|*b==0).collect::<Vec<_>>();let mut commits=Vec::new();for row in cells.chunks(6){if row.len()<6{break;}let s=|n:usize|String::from_utf8_lossy(row[n]).trim_start_matches(['\r','\n']).to_owned();commits.push(json!({"id":s(0),"parents":s(1).split_whitespace().collect::<Vec<_>>(),"author":s(2),"date":s(3),"subject":s(4),"refs":s(5)}));}
   let more=commits.len()>count as usize;commits.truncate(count as usize);Ok(json!({"commits":commits,"nextOffset":if more{Some(offset+count)}else{None}}))
  },
@@ -157,6 +168,13 @@ fn validate_url(url:&str)->Result<(),String>{if url.starts_with('-') || url.cont
 #[cfg(test)]
 mod tests {
  use super::*;
+ #[test] fn only_public_commit_references_are_listed_and_graphed(){
+  let p=fixture();execute(&p,"init",&json!({})).unwrap();git(&p,&["config","user.name","Test"]);git(&p,&["config","user.email","test@example.invalid"]);fs::write(p.join("project"),"base").unwrap();execute(&p,"stageAll",&json!({})).unwrap();execute(&p,"commit",&json!({"message":"Public base"})).unwrap();
+  let tree=text(&p,&["rev-parse","HEAD^{tree}"]).unwrap();git(&p,&["update-ref","refs/codex/checkpoint-tree",&tree]);git(&p,&["update-ref","refs/codex/checkpoint-commit","HEAD"]);git(&p,&["tag","tree-only",&tree]);git(&p,&["tag","release"]);git(&p,&["tag","-a","annotated","-m","Release"]);
+  git(&p,&["switch","--detach"]);fs::write(p.join("private-checkpoint"),"internal").unwrap();execute(&p,"stageAll",&json!({})).unwrap();execute(&p,"commit",&json!({"message":"Internal checkpoint"})).unwrap();git(&p,&["update-ref","refs/codex/private","HEAD"]);git(&p,&["switch","main"]);
+  let status=execute(&p,"status",&json!({})).unwrap();let refs=status["refs"].as_array().unwrap();assert!(!refs.iter().any(|r|r.as_str().unwrap().starts_with("codex/") || r=="tree-only"),"internal/noncommit references leaked into UI: {refs:?}");assert!(refs.iter().any(|r|r=="release"));assert!(refs.iter().any(|r|r=="annotated"));
+  let graph=execute(&p,"graph",&json!({})).unwrap();assert_eq!(graph["commits"].as_array().unwrap().len(),1);assert!(!graph["commits"][0]["refs"].as_str().unwrap().contains("codex"));assert_eq!(text(&p,&["rev-parse","refs/codex/checkpoint-tree"]).unwrap(),tree);fs::remove_dir_all(p).unwrap();
+ }
  #[test] fn invalid_existing_repository_reports_its_error_instead_of_claiming_no_repository(){
   let p=fixture();fs::write(p.join(".git"),"invalid git marker").unwrap();let result=execute(&p,"status",&json!({}));assert!(result.is_err(),"existing repository errors must not be swallowed: {result:?}");fs::remove_dir_all(p).unwrap();
  }
