@@ -92,7 +92,7 @@ function prefabDrop(s:Session,id:string,parent:string|null,index:number,at?:Plan
  const {snapshot}=collectSubtree(s.state,id),copies=new Map<string,string>();
  const copy=(sourceId:string,destination:string|null,position?:PlanePlacement):string=>{
   const card=snapshot.cards[sourceId]!;
-  const created=createCard(s,{parentId:destination,title:card.title,content:card.content,images:card.images,doodle:card.doodle ?? null,layout:card.layout,type:card.type,isPrefab:true,plane:position ?? placement(s,destination)});
+  const created=createCard(s,{parentId:destination,title:card.title,content:card.content,images:card.images,doodle:card.doodle ?? null,layout:card.layout,layoutSizes:card.layoutSizes,type:card.type,isPrefab:true,plane:position ?? placement(s,destination)});
   copies.set(sourceId,created);
   for(const entry of snapshot.children[sourceId] ?? [])copy(entry.id,created,'x' in entry?entry:undefined);
   return created;
@@ -273,7 +273,7 @@ function apply(s: Session, action: Exclude<Action, { kind: 'undo' }>): { created
       const copy = (sourceId: string, parent: string | null, at?: PlanePlacement): string => {
         const sourceCard = s.state.cards.get(sourceId)!;
         const id = createCard(s, { parentId: parent, title: sourceCard.title, content: sourceCard.content,doodle:sourceCard.doodle ?? null,images:sourceCard.images,
-          layout: sourceCard.layout, type: sourceCard.type, plane: at ?? placement(s, parent) });
+          layout: sourceCard.layout, layoutSizes:sourceCard.layoutSizes, type: sourceCard.type, plane: at ?? placement(s, parent) });
         copies.set(sourceId,id);
         setField(s, id, '/prefabRef', sourceCard.prefabRef ?? sourceId);
         for (const entry of [...(s.state.children.get(sourceId) ?? [])]) copy(entry.id, id, 'x' in entry ? entry : undefined);

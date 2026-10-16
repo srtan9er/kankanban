@@ -11,6 +11,7 @@ type Segment={node:Node;text:string;start:number;end:number;atomic:boolean};
 type Bounds={start:number;end:number;children:number[]};
 type EditorModel={text:string;segments:Segment[];bounds:Map<Node,Bounds>};
 const block=(node:Node)=>node instanceof HTMLElement && ['DIV','P','LI','PRE'].includes(node.tagName);
+const caretTail=(node:Node)=>node instanceof HTMLElement && node.tagName==='BR' && node.hasAttribute('data-markdown-caret-tail');
 const token=(node:Node|null,root:HTMLElement):HTMLElement|null=>{
  const element=node instanceof Element?node:node?.parentElement;
  const result=element?.closest<HTMLElement>('[data-markdown-token]');return result && root.contains(result)?result:null;
@@ -22,6 +23,7 @@ function editorModel(root:HTMLElement):EditorModel{
   const start=text.length,children:number[]=[];
   if(node.nodeType===3)append(node,node.textContent ?? '');
   else if(node instanceof HTMLElement && node.hasAttribute('data-markdown-token'))append(node,node.getAttribute('data-markdown-token') ?? '',true);
+  else if(caretTail(node)){/* The final empty caret line has no source character. */}
   else if(node instanceof HTMLElement && node.tagName==='BR')append(node,'\n');
   else for(let index=0;index<node.childNodes.length;index++){
    const child=node.childNodes[index]!;
@@ -42,6 +44,9 @@ export function renderMarkdownEditor(root:HTMLElement,value:string):void{
   if(!part.atomic){fragment.append(root.ownerDocument.createTextNode(part.text));continue;}
   const atom=root.ownerDocument.createElement('span');atom.className='markdown-image-token';atom.contentEditable='false';atom.setAttribute('contenteditable','false');atom.setAttribute('data-markdown-token',part.text);atom.textContent=uiText('images.editorToken',{arg0:part.name});fragment.append(atom);
  }
+ // A terminal LF in a pre-wrapped text node has no following line box. The BR
+ // makes that empty line reachable immediately, without adding another LF to Markdown.
+ if(value.endsWith('\n')){const tail=root.ownerDocument.createElement('br');tail.setAttribute('data-markdown-caret-tail','true');fragment.append(tail);}
  root.replaceChildren(fragment);
  root.dataset.empty=value.length===0?'true':'false';
 }
@@ -79,6 +84,9 @@ function point(root:HTMLElement,model:EditorModel,offset:number):{node:Node;offs
  }
  return {node:root,offset:root.childNodes.length};
 }
+/** Geometry adapters share the editor's source mapping without changing Selection. */
+export function markdownEditorPointAtOffset(root:HTMLElement,offset:number):{node:Node;offset:number}{return point(root,editorModel(root),offset);}
+export function markdownEditorOffsetAtPoint(root:HTMLElement,node:Node,offset:number):number{return sourceOffset(editorModel(root),root,node,offset);}
 export function setMarkdownEditorSelection(root:HTMLElement,start:number,end=start,backward=false):void{
  const model=editorModel(root),first=point(root,model,start),last=point(root,model,end),selection=root.ownerDocument.getSelection();if(!selection)return;
  if(selection.setBaseAndExtent){if(backward)selection.setBaseAndExtent(last.node,last.offset,first.node,first.offset);else selection.setBaseAndExtent(first.node,first.offset,last.node,last.offset);}
@@ -95,6 +103,8 @@ export function normalizeMarkdownEditorSelection(root:HTMLElement):boolean{
 }
 export function markdownEditorNeedsRender(root:HTMLElement,value:string):boolean{
  const current=editorModel(root);if(current.text!==value)return true;
+ const tails=root.querySelectorAll('[data-markdown-caret-tail]');
+ if(value.endsWith('\n')?(tails.length!==1 || tails[0]!==root.lastChild):tails.length!==0)return true;
  const actual=current.segments.filter(segment=>segment.atomic),references=parseBodyObjects(value),names=references.map(r=>r.displayName),wanted=references.map((token,index)=>({...token,name:names[index]!})).filter(token=>token.syntax==='image');
  return actual.length!==wanted.length || actual.some((segment,index)=>segment.start!==wanted[index]!.start || segment.end!==wanted[index]!.end || segment.text!==value.slice(wanted[index]!.start,wanted[index]!.end) || segment.node.textContent!==uiText('images.editorToken',{arg0:wanted[index]!.name}));
 }

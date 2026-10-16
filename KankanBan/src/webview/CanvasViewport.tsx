@@ -216,7 +216,8 @@ export function CanvasViewport({parent,entries,visibleIds,renderCard,onCommit,on
   return()=>{element.removeEventListener(CANVAS_DRAG_EVENT,receive);document.removeEventListener(CANVAS_WINDOW_SHIFT,shifted);};
  });
  const begin=(event:ReactPointerEvent<HTMLDivElement>):boolean=>{
-  if(drawingMode || (event.target as Element).closest('[data-drawing-surface]'))return false;
+  const right=event.button===2 || (event.buttons&2)!==0;
+  if(mode.isActive() || !right && (event.target as Element).closest('[data-drawing-surface]'))return false;
   if(pending.current)return false;
   wheelInput.current=null;
   settleView();
@@ -308,7 +309,7 @@ export function CanvasViewport({parent,entries,visibleIds,renderCard,onCommit,on
    const world=new DOMPoint(event.clientX-rect.left,event.clientY-rect.top).matrixTransform(matrix.inverse());
    if(event.type==='pointerdown')paintOrigin.current={x:Math.floor(world.x/tile.width)*tile.width,y:Math.floor(world.y/tile.height)*tile.height};
    return {x:world.x-paintOrigin.current.x,y:world.y-paintOrigin.current.y};
-  },undefined,2)}/> }
+  },undefined,0)}/> }
   {editable && <ViewportInkToolbar anchor={viewport}><InkPill mode={mode.mode} toggle={mode.toggle}/></ViewportInkToolbar>}
   {!entries.length && !ink.document.strokes.length && !drawingMode && !preview && <div className="canvas-empty">{uiText("webview/CanvasViewport.text002")}</div>}
   <button disabled={drawingMode} className="floating-add-card" aria-label={uiText("webview/CanvasViewport.text003")} title={uiText("webview/CanvasViewport.text003")} onClick={()=>onCreate(positiveModulo((extent.width/2-offsetRef.current.x)/zoomRef.current,period.width),positiveModulo((extent.height/2-offsetRef.current.y)/zoomRef.current,period.height))}><AddIcon/></button>

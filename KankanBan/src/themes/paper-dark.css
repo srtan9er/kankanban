@@ -1,0 +1,7 @@
+@import "paper.css";
+:root {
+ --palette-card:#373b30; --palette-prefab:#40394b; --palette-instance:#30443a;
+ --palette-background:#1c2425; --palette-text:#e5ebea; --palette-accent:#91c9cf;
+ --palette-danger:#f2a1a1; --palette-handle:#acb9b6;
+ --md-quote-background:color-mix(in srgb,var(--palette-accent) 9%,transparent);
+}

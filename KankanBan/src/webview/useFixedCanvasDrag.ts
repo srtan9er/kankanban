@@ -10,7 +10,8 @@ export function useFixedCanvasDrag(enabled:boolean,bindings:CanvasDragBindings,s
  },[]);
  const begin=(event:ReactPointerEvent):void=>{
   if(document.documentElement.dataset.doodleExiting)return;
-  if(!enabled || (event.target as HTMLElement).closest('button,textarea,select,input:not([readonly]),[role=separator],[data-drawing-surface]'))return;
+  const right=event.button===2 || !!(event.buttons&2);
+  if(!enabled || !right && (event.target as HTMLElement).closest('button,textarea,select,input:not([readonly]),[role=separator],[data-drawing-surface]'))return;
   const gesture=canvasGesture(event.button,event.buttons);
   if(active.current===gesture)return;
   const mode=bindings[gesture];

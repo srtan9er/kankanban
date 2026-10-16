@@ -1,0 +1,364 @@
+/*
+ * LightMind for KankanBan.
+ * Ported from the user's local Typora themes/lightmind.css.
+ * Source SHA-256: B34814F67B28CDA7D802E16A50734F79473E65CCE08941D90A73AB5CF059C2D7.
+ * Warm paper, forest green and the original local font fallback chains.
+ * Only selectors for supported KankanBan elements are included. Object coordinates,
+ * card geometry, native resize grips and floating tool placement remain app-owned.
+ */
+:root {
+  --bg-page:#f4f1e8;
+  --bg-write:#faf7ef;
+  --bg-soft:#ece8db;
+  --bg-formula:#f7f3e8;
+  --bg-quote:#ecefe6;
+  --bg-inline-code:#e7eee5;
+  --fg-main:#2c3a32;
+  --fg-muted:#6b7a6f;
+  --fg-faint:#93a098;
+  --fg-heading:#1f2a23;
+  --accent:#4a7c59;
+  --accent-deep:#2f5a40;
+  --accent-soft:#8fb39b;
+  --accent-warm:#c2a878;
+  --code-bg:#1e2330;
+  --code-bg-soft:#262c3a;
+  --code-fg:#c8cfd9;
+  --code-line:#3a4253;
+  --code-gutter:#6b7488;
+  --cm-keyword:#d55fde;
+  --cm-type:#e5c07b;
+  --cm-string:#89ca78;
+  --cm-number:#d19a66;
+  --cm-comment:#77b767;
+  --cm-variable:#ef596f;
+  --cm-def:#61afef;
+  --cm-property:#ef596f;
+  --cm-operator:#c8cfd9;
+  --cm-bracket:#7dba8b;
+  --cm-meta:#e5c07b;
+  --cm-tag:#d55fde;
+  --cm-attr:#2bbac5;
+  --radius-sm:4px;
+  --radius:8px;
+  --radius-lg:12px;
+  --shadow-sm:0 1px 2px rgba(44,58,50,.06);
+  --shadow:0 2px 10px rgba(44,58,50,.08),0 1px 3px rgba(44,58,50,.05);
+  --shadow-lg:0 6px 24px rgba(44,58,50,.12),0 2px 6px rgba(44,58,50,.06);
+  --font-body:"LXGW WenKai","LXGW WenKai Screen","霞鹜文楷","Noto Serif CJK SC","Source Han Serif CN","PingFang SC","Microsoft YaHei",system-ui,serif;
+  --font-mono:"JetBrains Mono","JetBrainsMono NF","Fira Code","Cascadia Code","SF Mono",Consolas,"Courier New","LXGW WenKai","LXGW WenKai Screen","霞鹜文楷","Noto Serif CJK SC","PingFang SC",monospace;
+  --font-heading:"LXGW WenKai","LXGW WenKai Screen","霞鹜文楷","Noto Serif CJK SC","PingFang SC",system-ui,serif;
+
+  /* Semantic card kinds use LightMind's paper, important-alert and tip colors. */
+  --palette-card:var(--bg-write);
+  --palette-prefab:#f0eaf6;
+  --palette-instance:#ebf2ec;
+  --palette-background:var(--bg-page);
+  --palette-text:var(--fg-main);
+  --palette-accent:var(--accent);
+  --palette-danger:#c4564a;
+  --palette-handle:var(--fg-faint);
+  --palette-muted-text:var(--fg-muted);
+  --palette-shade-end:var(--fg-main);
+  --palette-tint-end:var(--bg-write);
+  --palette-card-border:color-mix(in srgb,var(--palette-card) 72%,var(--fg-main));
+  --palette-prefab-border:color-mix(in srgb,var(--palette-prefab) 72%,var(--fg-main));
+  --palette-instance-border:color-mix(in srgb,var(--palette-instance) 72%,var(--fg-main));
+  --surface:var(--bg-write);
+  --canvas:var(--bg-page);
+  --sidebar:var(--bg-page);
+  --text:var(--fg-main);
+  --muted:var(--fg-muted);
+  --line:rgba(74,124,89,.25);
+  --hover:rgba(74,124,89,.12);
+
+  --md-font-family:var(--font-body);
+  --md-mono-family:var(--font-mono);
+  --md-font-size:18px;
+  --md-line-height:1.78;
+  --md-paragraph-space:32.4px;
+  --md-inset-x:56px;
+  --md-inset-y:48px;
+  --md-inset-top:48px;
+  --md-inset-bottom:96px;
+  --md-h1-size:33.3px;
+  --md-h2-size:27px;
+  --md-h3-size:22.5px;
+  --md-heading-weight:700;
+  --md-strong-weight:700;
+  --md-text:var(--fg-main);
+  --md-heading:var(--fg-heading);
+  --md-h1-color:var(--fg-heading);
+  --md-h2-color:var(--accent-deep);
+  --md-h3-color:var(--accent-deep);
+  --md-link:var(--accent);
+  --md-quote-text:var(--fg-main);
+  --md-quote-border:var(--accent);
+  --md-quote-background:var(--bg-quote);
+  --md-code-text:var(--accent-deep);
+  --md-code-background:var(--bg-inline-code);
+  --md-table-line:rgba(74,124,89,.38);
+  --md-table-header:var(--accent);
+  --md-table-stripe:var(--bg-soft);
+  color-scheme:light;
+  font-family:var(--font-body);
+  -webkit-font-smoothing:antialiased;
+  -moz-osx-font-smoothing:grayscale;
+}
+
+/* Frameless KKB windows keep their transparent corner clipping. */
+body { font-variant-ligatures:common-ligatures; }
+#root .manager-shell,#root .proto-note,#root .workspace-main,#root .manager-navigation,#root .workspace-footer { font-family:var(--font-body); }
+#root .manager-shell .manager-navigation,#root .manager-shell .workspace-footer { background:var(--bg-page); }
+#root .manager-shell .topbar { background:var(--bg-soft); border-color:rgba(74,124,89,.18); }
+#root .manager-shell .manager-tabs button.active { background:var(--bg-soft); color:var(--accent-deep); }
+#root .manager-shell .manager-tabs button:hover { background:rgba(74,124,89,.12); }
+#root .manager-shell .settings-card { background:var(--bg-write); border-color:rgba(74,124,89,.18); }
+#root .note-title-row .title { font-family:var(--font-heading); color:var(--fg-heading); }
+#root .note-breadcrumb { color:var(--fg-muted); }
+#root .action-menu,#root .edit-dialog,#root .workspace-history-list { background:var(--bg-write); border-color:var(--accent-soft); box-shadow:var(--shadow-lg); }
+#root .action-menu button:hover,#root .workspace-history-list > button:hover { background:rgba(74,124,89,.12); color:var(--fg-heading); }
+#root .image-layout-toolbar,#root .table-floating-dock[data-floating-object-tools] { background:color-mix(in srgb,var(--bg-write) 96%,transparent); border-color:rgba(74,124,89,.25); box-shadow:var(--shadow); }
+#root .theme-specimen { background:var(--bg-write); border-color:var(--accent-soft); }
+
+/* The writing surface is the card's existing coordinate container. Insets apply
+   to text only, so images, tables and ink retain their saved positions. */
+#root .rich-image-body,#root .markdown-editor {
+  font-family:var(--font-body);
+  font-size:18px;
+  line-height:1.78;
+  color:var(--fg-main);
+  font-variant-ligatures:common-ligatures;
+}
+#root .rich-image-body [data-md-kind="p"] { margin:.9em 0; letter-spacing:.01em; }
+#root .rich-image-body .paragraph-gap { height:16.2px; }
+#root .rich-image-body strong,#root .rich-image-body b { color:var(--accent-deep); font-weight:700; }
+#root .rich-image-body em,#root .rich-image-body i { color:var(--fg-main); font-style:italic; }
+#root .rich-image-body :is(del,s) { color:var(--fg-faint); opacity:1; }
+#root .rich-image-body u { text-underline-offset:2px; }
+#root .rich-image-body a {
+  color:var(--accent);
+  text-decoration:none;
+  border-bottom:1px solid rgba(74,124,89,.35);
+  transition:color .15s ease,border-color .15s ease;
+}
+#root .rich-image-body a:hover { color:var(--accent-deep); border-bottom-color:var(--accent-deep); }
+
+/* Source title proportions and decorations. The H3 bar is painted without an
+   inline glyph, so Pretext and browser layout measure exactly the same text. */
+#root .rich-image-body :is(h1,h2,h3) {
+  font-family:var(--font-heading);
+  color:var(--fg-heading);
+  font-weight:700;
+  line-height:1.35;
+  margin-top:1.6em;
+  margin-bottom:.6em;
+  letter-spacing:.005em;
+}
+#root .rich-image-body h1 {
+  font-size:33.3px;
+  border-bottom:2px solid var(--accent);
+  padding-bottom:.35em;
+  margin-top:.6em;
+}
+#root .rich-image-body h2 {
+  font-size:27px;
+  color:var(--accent-deep);
+  border-bottom:1px solid rgba(74,124,89,.25);
+  padding-bottom:.3em;
+}
+#root .rich-image-body h3 { font-size:22.5px; color:var(--accent-deep); padding-left:calc(4px + .55em); }
+#root .rich-image-body h3::before {
+  content:"";
+  position:absolute;
+  left:0;
+  top:.2em;
+  width:4px;
+  height:.95em;
+  border-radius:2px;
+  background:var(--accent);
+  pointer-events:none;
+}
+#root .rich-image-flow > .rich-text-inset:first-child { margin-top:var(--md-inset-y); }
+
+/* Inline monospace and fenced code retain separate light/dark surfaces. */
+#root .rich-image-body code {
+  font-family:var(--font-mono);
+  font-size:.9em;
+  line-height:inherit;
+  background:var(--bg-inline-code);
+  color:var(--accent-deep);
+  padding:1px 6px;
+  border-radius:var(--radius-sm);
+  border:1px solid rgba(74,124,89,.15);
+  font-feature-settings:"calt" 1,"liga" 0;
+}
+#root .rich-image-body a code { color:var(--accent); }
+#root .rich-image-body pre {
+  font-family:var(--font-mono);
+  font-size:18px;
+  line-height:1.62;
+  letter-spacing:normal;
+  background:var(--code-bg);
+  color:var(--code-fg);
+  border:1px solid var(--code-line);
+  border-radius:var(--radius);
+  padding:16px 18px;
+  margin:.9em 0;
+  box-shadow:var(--shadow);
+  font-feature-settings:"calt" 1,"liga" 1;
+}
+#root .rich-image-body pre code { font:inherit; background:transparent; color:inherit; border:0; border-radius:0; padding:0; }
+
+#root .rich-image-body blockquote {
+  font-family:var(--font-body);
+  font-size:18px;
+  line-height:1.78;
+  background:var(--bg-quote);
+  color:var(--fg-main);
+  border:1px solid rgba(74,124,89,.18);
+  border-left:4px solid var(--accent);
+  border-radius:var(--radius);
+  padding:14px 20px;
+  margin:.9em 0;
+  box-shadow:var(--shadow-sm);
+  font-style:normal;
+}
+
+/* Free objects use absolutely positioned text lines. Their decorated paragraph
+   boxes are painted behind those lines; margins and padding stay metric-owned. */
+#root .rich-image-body :is(h1,h2,pre,blockquote).rich-flow-paragraph { background:transparent; box-shadow:none; }
+#root .rich-image-body :is(h1,h2,pre,blockquote).rich-flow-paragraph::before {
+  content:"";
+  position:absolute;
+  left:var(--md-inset-x);
+  right:var(--md-inset-x);
+  pointer-events:none;
+  z-index:-1;
+}
+#root .rich-image-body h1.rich-flow-paragraph::before { bottom:calc(-.35em - 2px); border-bottom:2px solid var(--accent); }
+#root .rich-image-body h2.rich-flow-paragraph::before { bottom:calc(-.3em - 1px); border-bottom:1px solid rgba(74,124,89,.25); }
+#root .rich-image-body h3.rich-flow-paragraph::before { left:var(--md-inset-x); }
+#root .rich-image-body pre.rich-flow-paragraph::before {
+  top:-17px;
+  bottom:-17px;
+  background:var(--code-bg);
+  border:1px solid var(--code-line);
+  border-radius:var(--radius);
+  box-shadow:var(--shadow);
+}
+#root .rich-image-body blockquote.rich-flow-paragraph::before {
+  top:-15px;
+  bottom:-15px;
+  background:var(--bg-quote);
+  border:1px solid rgba(74,124,89,.18);
+  border-left:4px solid var(--accent);
+  border-radius:var(--radius);
+  box-shadow:var(--shadow-sm);
+}
+
+/* Lists are parser-owned paragraphs. Keep the original forest checkbox without
+   introducing textual pseudo-elements or changing the flow engine's hitboxes. */
+#root .rich-image-body .md-list { color:var(--fg-main); margin:.25em 0; }
+#root .rich-image-body .md-list > span:first-child:not([data-source-start]) { color:var(--accent); }
+#root .rich-image-body .md-task { margin:.45rem 0; }
+#root .markdown-task-check {
+  appearance:none;
+  -webkit-appearance:none;
+  display:inline-block;
+  width:1.3em;
+  height:1.3em;
+  min-width:1.3em;
+  margin:0 6px 0 0;
+  padding:0;
+  border:2px solid var(--accent);
+  border-radius:6px;
+  background:transparent;
+  vertical-align:middle;
+  transition:background-color .15s ease,border-color .15s ease;
+}
+#root .markdown-task-check:checked { background:var(--accent); border-color:var(--accent); }
+#root .markdown-task-check:checked::after {
+  content:"";
+  display:block;
+  position:absolute;
+  left:12%;
+  top:15%;
+  width:78%;
+  height:70%;
+  background:var(--bg-write);
+  clip-path:polygon(4% 46%,20% 31%,42% 57%,82% 9%,98% 24%,42% 90%);
+}
+#root .md-task:has(.markdown-task-check:checked) { color:var(--fg-muted); text-decoration:line-through; text-decoration-color:var(--fg-faint); }
+
+/* Tables retain app-owned row/column sizes and the external editing toolbar.
+   Header, stripes and rules reproduce the original LightMind table treatment. */
+#root .markdown-table {
+  border-collapse:separate;
+  border-spacing:0;
+  margin:.9em 0;
+  background:var(--bg-write);
+  border-radius:var(--card-radius);
+  overflow:hidden;
+  box-shadow:var(--shadow-sm);
+  font-size:17.1px;
+  border:2px solid var(--accent-deep);
+}
+#root .markdown-table thead,#root .editable-table th { background:var(--accent); color:var(--bg-write); }
+#root .markdown-table th { padding:10px 14px; font-weight:600; text-align:left; border:0; border-right:1px solid rgba(255,255,255,.3); }
+#root .markdown-table td { padding:9px 14px; border:0; border-top:1px solid rgba(74,124,89,.38); border-right:1px solid rgba(74,124,89,.3); }
+#root .markdown-table tr > :last-child { border-right:0; }
+#root .markdown-table tbody tr:nth-child(even),#root .editable-table tr:nth-child(odd):not(:first-child) { background:var(--bg-soft); }
+#root .table-surface { background:var(--bg-write); box-shadow:var(--shadow-sm); }
+#root .table-surface::after { border:2px solid var(--accent-deep); }
+#root .table-surface::before { border-left-color:var(--accent-deep); border-top-color:var(--accent-deep); }
+#root .editable-table { border-color:var(--accent-deep); color:var(--fg-main); }
+#root .editable-table { font-family:var(--font-body); font-size:17.1px!important; line-height:1.5!important; }
+#root .editable-table :is(th,td) { border-right-color:rgba(74,124,89,.3); border-bottom-color:rgba(74,124,89,.38); }
+#root .editable-table th { border-right-color:rgba(255,255,255,.3); }
+#root .editable-table th .rich-image-body,#root .markdown-table th .rich-image-body { --md-text:var(--bg-write); color:var(--bg-write); }
+#root :is(.editable-table,.markdown-table) th :is(strong,b,em,i,a,code) { color:inherit; }
+#root :is(.editable-table,.markdown-table) th::selection,#root :is(.editable-table,.markdown-table) th *::selection { background:rgba(255,255,255,.45); color:var(--accent-deep); }
+#root .table-cell-content .rich-image-body { --md-inset-x:0px; --md-inset-y:0px; --md-inset-top:0px; --md-inset-bottom:0px; }
+#root .table-cell-content .rich-image-body :is(.rich-text-paragraph,.rich-flow-paragraph) { margin:0; font-size:17.1px; line-height:1.5; }
+#root .table-cell-editor { font-family:var(--font-body); color:inherit; caret-color:var(--accent-deep); }
+#root .table-row-select { background:var(--accent-deep); }
+#root .table-column-select { background:var(--accent-deep); }
+#root .table-axis-select:hover { background:var(--accent); }
+
+#root .rich-image-body .markdown-rule {
+  border:none;
+  height:1px;
+  background:linear-gradient(to right,transparent,var(--accent-soft) 30%,var(--accent-soft) 70%,transparent);
+  margin:2em 0;
+  opacity:1;
+}
+#root .rich-image-body.has-free-images .markdown-rule { margin:0; }
+#root .image-placement .image-asset { box-shadow:var(--shadow); }
+
+/* Shorthand block margins above must not erase the writing inset. */
+#root .rich-image-body .rich-image-flow > .rich-text-inset { margin-inline:var(--md-inset-x); }
+#root .rich-image-body .rich-image-flow > .rich-text-inset:first-child { margin-top:var(--md-inset-top); }
+#root .rich-image-body .rich-image-flow > .rich-text-inset:last-child { margin-bottom:var(--md-inset-bottom); }
+#root .table-cell-content .rich-image-body .rich-image-flow > .rich-text-inset { margin:0; }
+
+/* KKB's source editor has atomic image/table tokens, rather than CodeMirror. */
+#root .proto-note .markdown-editor.content,#root .edit-dialog .markdown-editor {
+  font-family:var(--font-mono);
+  font-size:18px;
+  line-height:1.78;
+  color:var(--fg-main);
+  background:var(--bg-write);
+  caret-color:var(--accent-deep);
+}
+#root .markdown-editor .markdown-image-token { color:var(--accent-deep); font-weight:700; }
+
+::selection { background:rgba(74,124,89,.25); color:inherit; }
+#root .rich-image-body pre::selection,#root .rich-image-body pre *::selection { background:rgba(125,186,139,.32); color:inherit; }
+::-webkit-scrollbar-track { background:transparent; }
+::-webkit-scrollbar-thumb { background:rgba(74,124,89,.25); border-radius:5px; border:2px solid transparent; background-clip:padding-box; }
+::-webkit-scrollbar-thumb:hover { background:rgba(74,124,89,.45); border:2px solid transparent; background-clip:padding-box; }
+
+@media (prefers-reduced-motion:reduce) {
+  #root .rich-image-body a,#root .markdown-task-check { transition:none; }
+}

@@ -16,6 +16,11 @@ export function resizeTableTracks(data:TableData,width?:number,height?:number):T
 export type TableCell={row:number;col:number;rowSpan:number;colSpan:number;text:string};
 export type TableData={columns:number[];rows:number[];alignment:('left'|'right'|'center')[];cells:TableCell[]};
 export type BodyTable=ImagePlacement & {start:number;end:number;name:string;data:TableData;collapsed?:boolean;syntax:'table'|'markdown-table'};
+/** New tables use the same persisted object format as imported Markdown tables. */
+export function emptyTableMarkup(content:string):string{
+ const used=new Set(parseTables(content).map(table=>table.name));let next=0;while(used.has(`table_${next}`))next++;
+ return serializeTable({start:0,end:0,syntax:'table',name:`table_${next}`,layout:'inline',data:{columns:[TABLE_MIN_COLUMN_WIDTH,TABLE_MIN_COLUMN_WIDTH],rows:[TABLE_MIN_ROW_HEIGHT,TABLE_MIN_ROW_HEIGHT],alignment:['left','left'],cells:Array.from({length:4},(_,index)=>({row:Math.floor(index/2),col:index%2,rowSpan:1,colSpan:1,text:''}))}});
+}
 const escape=(value:string)=>value.replace(/&/g,'&amp;').replace(/<(\/?)(cell|table)(?=[\s>])/g,'&lt;$1$2');
 const decode=(value:string)=>value.replace(/&lt;(\/?)(cell|table)(?=[\s>])/g,'<$1$2').replace(/&amp;/g,'&');
 const invalid=()=>{throw new Error(uiText('tables.invalid'));};

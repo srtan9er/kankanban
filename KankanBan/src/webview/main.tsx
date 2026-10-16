@@ -1,3 +1,4 @@
+import {connectThemeRuntime,themeRuntime} from '../themes/runtime.ts';
 import {cardIdFromLabel,windowIdFromLabel} from '../core/window-identity.ts';
 import {isSkin} from '../core/skins.ts';
 import {uiText} from '../i18n/text.ts';
@@ -13,9 +14,11 @@ import { WorkspaceController } from './controller.ts';
 import { WorkspaceApp } from './WorkspaceApp.tsx';
 import { connectDesktop } from './desktop.ts';
 import { invoke } from '@tauri-apps/api/core';
+import {tutorialAssetInputs} from '../tutorial/assets.ts';
 import './platte.css';
 import './prototype.css';
 import './workspace.css';
+import '../themes/defaults.css';
 
 // Prevent the webview's native context menu, including on editable controls.
 if(!document.documentElement.dataset.contextMenuDisabled){
@@ -63,13 +66,15 @@ async function boot(): Promise<void> {
   const newWorkspace=!mirror && !buffer.ops.exists(`${root}/.kkb/tree.json`) && !buffer.ops.exists(`${root}/.kkb/events.jsonl`);
   const session = openSession(root, { ops: mirror ? createMemoryFs().ops : buffer.ops, clientId: 'ui', builtins: !mirror });
   const controller = new WorkspaceController(session, readViewState(root, buffer.ops), buffer, backend);
+  if(native)controller.prepareTutorialAssets=async()=>{await invoke('import_image_assets',{inputs:tutorialAssetInputs()});};
   if (!mirror) {
     normalizeBoards(session);
     if(newWorkspace)await controller.execute({kind:'tutorial'});
     else await controller.flush();
   }
-  document.documentElement.dataset.theme=controller.view.skin ?? 'light';
-  controller.subscribe(()=>{document.documentElement.dataset.theme=controller.view.skin ?? 'light';});
+  connectThemeRuntime(error=>{controller.error=String(error);controller.accept(controller.snapshot());});
+  const applyTheme=()=>{void themeRuntime.set(controller.view.theme ?? '',controller.view.skin ?? 'light').catch(error=>{controller.error=String(error);});};
+  applyTheme();controller.subscribe(applyTheme);
   let desktop: Awaited<ReturnType<typeof connectDesktop>> | undefined;
   if (native) desktop = await connectDesktop(controller, label);
   else controller.subscribe(() => { if (!controller.busy && !controller.error) {

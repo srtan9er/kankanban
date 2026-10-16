@@ -1,5 +1,6 @@
 import type {InkDocument} from './drawing.ts';
 import type {CardImage} from './card-images.ts';
+import type {LayoutSizes} from './layout-sizes.ts';
 export type {CardImage} from './card-images.ts';
 /**
  * KankanBan 核心数据类型 —— 只含类型，不含运行时代码。
@@ -60,6 +61,8 @@ export type CardFields = {
    * 与 §2.5（分派规则第 2 步读它）都把它当落盘字段用，故此处按落盘字段建模。
    */
   layout: Layout;
+  /** Non-default body/child-region dimensions, remembered separately per layout. */
+  layoutSizes?:LayoutSizes;
   /** 预制体标记；仅 003 子树内为真 */
   isPrefab: boolean;
   /** 实例指向的预制体 id */

@@ -57,7 +57,9 @@ function undoOne(state: CoreState, event: CardEvent): CoreState {
       }
       const key = fieldKeyOf(event.path);
       const cards = new Map(state.cards);
-      cards.set(event.cardId, { ...prev, [key]: key==='images'?readCardImages(event.from ?? []):event.from } as CardFields);
+      const next={ ...prev, [key]: key==='images'?readCardImages(event.from ?? []):event.from } as CardFields;
+      if(key==='layoutSizes'&&event.from==null)delete next.layoutSizes;
+      cards.set(event.cardId,next);
       return { cards, children: state.children, lastAppliedSeq };
     }
 

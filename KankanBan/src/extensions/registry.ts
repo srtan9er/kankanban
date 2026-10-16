@@ -1,7 +1,9 @@
 import {uiText,type TextKey} from '../i18n/text.ts';
-export const EXTENSION_API_VERSION=1;
+import {validExtensionTutorial,type ExtensionTutorial} from '../core/tutorial-schema.ts';
+import {gitTutorial} from './git/tutorial.ts';
+export const EXTENSION_API_VERSION=2;
 export type ExtensionConfig={installed:boolean;enabled:boolean;config:Record<string,unknown>};
-export type ExtensionManifest={id:string;version:string;apiVersion:number;nameKey:TextKey;descriptionKey:TextKey;capabilities:readonly string[]};
+export type ExtensionManifest={id:string;version:string;apiVersion:number;nameKey:TextKey;descriptionKey:TextKey;capabilities:readonly string[];tutorial:ExtensionTutorial};
 export type ExtensionEvent={id:string;kind:'state'|'result';requestId?:string;value:unknown};
 export interface ExtensionService {
  initialize(config:Record<string,unknown>):Promise<void>;
@@ -16,6 +18,7 @@ export class ExtensionHost {
  register(manifest:ExtensionManifest,service:ExtensionService):void{
   if(manifest.apiVersion!==EXTENSION_API_VERSION)throw new Error(uiText('extensions.unsupported'));
   if(!/^[a-z][a-z0-9-]{0,63}$/.test(manifest.id))throw new Error(uiText('extensions.invalid'));
+  if(!validExtensionTutorial(manifest.tutorial))throw new Error(uiText('extensions.invalidTutorial'));
   if(this.entries.has(manifest.id))throw new Error(uiText('extensions.duplicate'));
   this.entries.set(manifest.id,{manifest,service,enabled:false});
  }
@@ -30,7 +33,7 @@ export class ExtensionHost {
  async uninstall(id:string){await this.disable(id);await this.entry(id).service.dispose();this.entries.delete(id);this.publish({id,kind:'state',value:null});}
  async invoke(id:string,method:string,args:Record<string,unknown>={}){const e=this.entry(id);if(!e.enabled)throw new Error(uiText('extensions.notEnabled'));const result=await e.service.invoke(method,args);this.publish({id,kind:'result',value:result});return result;}
 }
-export const GIT_EXTENSION:ExtensionManifest={id:'git',version:'0.1.0',apiVersion:1,nameKey:'extensions.git',descriptionKey:'extensions.gitDescription',capabilities:['project-git']};
+export const GIT_EXTENSION:ExtensionManifest={id:'git',version:'0.2.0',apiVersion:EXTENSION_API_VERSION,nameKey:'extensions.git',descriptionKey:'extensions.gitDescription',capabilities:['project-git'],tutorial:gitTutorial};
 export const AVAILABLE_EXTENSIONS:readonly ExtensionManifest[]=[GIT_EXTENSION];
 export const extensionAnchor=(id:string)=>`ext-${id}`;
 export const extensionId=(anchor:string)=>anchor.startsWith('ext-')?anchor.slice(4):null;

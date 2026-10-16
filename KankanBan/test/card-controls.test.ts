@@ -22,7 +22,7 @@ test('browsing blocks table cell edits and task changes even with a writer attac
  try{
   await act(async()=>root.render(createElement(EditMode.Provider,{value:{editable:false,busy:false}},createElement(Markdown,{id:'card',text:'- [ ] Task\n\n| A | B |\n| --- | --- |\n| C | D |',send:async request=>{requests.push(request);}}))));
   const cell=host.querySelector<HTMLElement>('[data-table-cell="0:0"]')!;
-  await act(async()=>cell.click());assert.equal(host.querySelector('.table-cell-editor'),null);assert.equal(host.querySelector('.table-tools'),null);
+  await act(async()=>cell.click());assert.ok(!host.querySelector('.table-cell-editor'));assert.ok(!host.querySelector('.table-tools'));
   const task=host.querySelector<HTMLInputElement>('.markdown-task-check')!;assert.ok(task.disabled);await act(async()=>task.click());assert.equal(task.checked,false);assert.equal(requests.length,0);
  }finally{await act(async()=>root.unmount());host.remove();}
 });
@@ -69,18 +69,19 @@ test('independent child windows refresh full tree breadcrumbs when the card move
 test('window mode switch disables body and title editing and hides doodle tools until editing resumes',async()=>{
  const f=await mount();try{
   const toggle=f.host.querySelector<HTMLButtonElement>('.toggle')!;
+  const visual=f.host.querySelector<HTMLElement>('[data-visual-editor]')!;assert.ok(visual);assert.equal(visual.getAttribute('data-visual-active'),'false');
   assert.equal(toggle.getAttribute('aria-label'),'切换到浏览模式');
   await act(async()=>toggle.click());
   assert.equal(toggle.getAttribute('aria-label'),'切换到编辑模式');
-  assert.equal(document.querySelector('.ink-pill'),null);
+  assert.ok(!document.querySelector('.ink-pill'));
   await act(async()=>f.host.querySelector('.preview')!.dispatchEvent(new MouseEvent('click',{bubbles:true})));
-  assert.equal(f.host.querySelector('[data-markdown-editor]'),null);
+  assert.ok(f.host.querySelector('[data-visual-editor]')===visual,'browsing retains the same formatted surface');assert.equal(visual.getAttribute('data-visual-active'),'false');assert.equal(visual.getAttribute('contenteditable'),null);assert.equal(f.host.querySelector<HTMLElement>('.card-body-editor')!.dataset.bodyEditing,'false');
   await act(async()=>f.host.querySelector<HTMLInputElement>('.title')!.click());
   assert.equal(f.host.querySelector<HTMLInputElement>('.title')!.readOnly,true);
   await act(async()=>toggle.click());
   assert.ok(document.querySelector('.ink-pill'));
   await act(async()=>f.host.querySelector('.preview')!.dispatchEvent(new MouseEvent('click',{bubbles:true})));
-  assert.ok(f.host.querySelector('[data-markdown-editor]'));
+  assert.ok(f.host.querySelector('[data-visual-editor]')===visual);assert.equal(visual.getAttribute('data-visual-active'),'true');assert.equal(visual.getAttribute('contenteditable'),'true');
  }finally{await f.close();}
 });
 test('failed persistence keeps the window in editing mode and reports the error',async()=>{

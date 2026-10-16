@@ -2,14 +2,14 @@
  * Day borders darken card colors; night borders lighten them. Gray derives from handle.
  * White/black below are mixing endpoints, not additional skin inputs. */
 :root {
-  --palette-card: #fff9c4; /* 普通卡片 */
-  --palette-prefab: #e1d5ed; /* 预制体卡片 */
-  --palette-instance: #d9efdb; /* 实例卡片 */
-  --palette-background: #ffffff; /* 背景 */
-  --palette-text: #5d4037; /* 文字 */
-  --palette-accent: #4a90e2; /* 强调／交互反馈 */
-  --palette-danger: #c62828; /* 危险／错误 */
-  --palette-handle: #8c8c8c; /* 手柄及全部中性灰 */
+  --palette-card: #fff4b8; /* 普通卡片 */
+  --palette-prefab: #e6dcef; /* 预制体卡片 */
+  --palette-instance: #dcebdc; /* 实例卡片 */
+  --palette-background: #f8faf9; /* 背景 */
+  --palette-text: #333d3b; /* 文字 */
+  --palette-accent: #3b7179; /* 强调／交互反馈 */
+  --palette-danger: #b44040; /* 危险／错误 */
+  --palette-handle: #7a8584; /* 手柄及全部中性灰 */
 
   /* Polarity-aware mixing endpoints. Alpha shadows always retain black. */
   --palette-muted-text:color-mix(in srgb,var(--palette-handle) 60%,black);
@@ -101,15 +101,15 @@
 }
 
 /* Night skin: eight independent inputs, with a different derivation polarity. */
-:root[data-theme=dark] {
-  --palette-card:#34382b;
-  --palette-prefab:#3d3448;
-  --palette-instance:#2b4035;
-  --palette-background:#171a1f;
-  --palette-text:#e7eaf0;
-  --palette-accent:#89b7f0;
-  --palette-danger:#ff9292;
-  --palette-handle:#afb5be;
+:root:where([data-theme=dark]) {
+  --palette-card:#373b30;
+  --palette-prefab:#40394b;
+  --palette-instance:#30443a;
+  --palette-background:#1c2425;
+  --palette-text:#e5ebea;
+  --palette-accent:#91c9cf;
+  --palette-danger:#f2a1a1;
+  --palette-handle:#acb9b6;
   --palette-muted-text:var(--palette-handle);
   --palette-shade-end:white;
   --palette-tint-end:var(--palette-background);

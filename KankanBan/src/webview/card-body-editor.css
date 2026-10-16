@@ -1,0 +1,15 @@
+.card-body-editor.preview { min-height:0; height:100%; overflow:auto; padding:0; user-select:none; -webkit-user-select:none; }
+.card-body-editor[data-body-editing="false"] [data-markdown-editor],
+.card-body-editor[data-body-editing="false"] [data-markdown-token] { user-select:none; -webkit-user-select:none; }
+.card-body-editor[data-body-editing="true"] [data-markdown-editor][contenteditable="true"],
+.card-body-editor .image-placement [contenteditable="true"] { user-select:text; -webkit-user-select:text; }
+/* A translucent palette cue works on both light and dark card surfaces. */
+.card-body-editor[data-body-editing="true"] { background-color:color-mix(in srgb,var(--palette-accent) 5%,transparent); }
+.card-body-editor .markdown-editor.content { height:auto; min-height:100%; overflow:visible; box-sizing:border-box; }
+.card-body-editor .visual-body-editor { white-space:normal; }
+/* Visual editing is a coordinate surface, rather than the legacy source box. */
+.card-body-editor .body-visual-surface { height:auto; min-height:100%; overflow:visible; padding:0; background:transparent; box-sizing:border-box; }
+.body-mode-toggle { width:28px; height:28px; border:1px solid var(--line); border-radius:50%; padding:0; display:grid; place-items:center; color:var(--palette-handle); background:var(--card-color,var(--palette-card)); cursor:pointer; }
+.body-mode-toggle svg { width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:1.5; stroke-linecap:round; stroke-linejoin:round; }
+.body-mode-toggle[aria-pressed="true"] { color:var(--palette-accent); border-color:var(--palette-accent); }
+.body-mode-toggle:disabled { opacity:.5; }

@@ -86,7 +86,7 @@ export class OperationJournal {
   }catch{/* Checkpoints are a cache; corrupt or replaced histories safely require reading again. */}
  }
  private index(record:Operation):void{
-  if(collaborationRelevant(record.operation)){const key=actorKey(record.actor),list=this.byActor.get(key) ?? [];list.push(record.seq);this.byActor.set(key,list);}
+  if(collaborationRelevant(record.operation,record.details)){const key=actorKey(record.actor),list=this.byActor.get(key) ?? [];list.push(record.seq);this.byActor.set(key,list);}
   const d=record.details as {id?:string;eventKeys?:string[]};if(d?.id)this.knownEvents.add(eventKey(d));for(const value of d?.eventKeys ?? [])this.knownEvents.add(value);
  }
  /** Persist only a receipt echoed after its complete response was delivered. */
@@ -134,12 +134,12 @@ export class OperationJournal {
    this.sealPending();
    const {eventKeys:_,...bounded}=details as Record<string,unknown>;
    this.pending={group,count:1,startedAt:timestamp,record:{seq:this.operations.length+1,id:this.newId(),timestamp,actor:validateActor(actor),operation,details:bounded}};
-  }else if(collaborationRelevant(operation))this.append(actor,operation,details,timestamp);
+  }else if(collaborationRelevant(operation,details))this.append(actor,operation,details,timestamp);
   const unchanged=this.importedCount===events.length && this.importedTail===events.at(-1);
   const start=this.importedCount<=events.length && (this.importedCount===0 || this.importedTail===events[this.importedCount-1])?this.importedCount:0;
   for(let i=start;i<events.length;i++)this.knownEvents.add(eventKey(events[i]!));
   if(!unchanged)this.checkpointEvents(events);
-  if(collaborationRelevant(operation) || !unchanged)this.saveState();
+  if(collaborationRelevant(operation,details) || !unchanged)this.saveState();
  }
  sealPending():void {
   if(!this.pending)return;
@@ -157,6 +157,7 @@ export class OperationJournal {
   const recovered=this.replay && this.replay.count<=events.length && (this.replay.count===0?this.replay.tail===null:eventKey(events[this.replay.count-1]!)===this.replay.tail);
   const start=cached?this.importedCount:recovered?this.replay!.count:0;
   for(let i=start;i<events.length;i++){const event=events[i]!;if(!this.knownEvents.has(eventKey(event))){
+   if(!collaborationRelevant(event.type,event)){this.knownEvents.add(eventKey(event));continue;}
    this.append(event.actor ?? {kind:'legacy',id:event.clientId.replace(/[^a-zA-Z0-9._-]/g,'_').slice(0,80)||'unknown',name:event.clientId},event.type,compactChange(event),event.timestamp);
   }}
   if(start!==events.length){this.checkpointEvents(events);this.saveState();}else{this.importedCount=events.length;this.importedTail=events.at(-1);}

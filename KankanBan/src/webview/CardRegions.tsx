@@ -88,6 +88,6 @@ export function CardRegions({ vertical, saved, save, body, children, add }: {
       <button className="child-region-resizer" title={hidden ? (vertical ? uiText("webview/CardRegions.text002") : uiText("webview/CardRegions.text003")) : vertical ? uiText("webview/CardRegions.text004", {arg0: (CHILD_BAR_MIN_WIDTH / 2)}) : uiText("webview/CardRegions.text005", {arg0: (CHILD_BAR_MIN_HEIGHT / 2)})} aria-label={uiText("webview/CardRegions.text006")} onPointerDown={resize}><span aria-hidden="true" className="resize-rails" /></button>
       {children}
     </div>
-    <button className="floating-add-card" aria-label={uiText("webview/CardRegions.text007")} title={uiText("webview/CardRegions.text007")} onClick={()=>{if(hidden){const next=defaults();updateSize(next);save(next);}add();}}><AddIcon/></button>
+    <button className="floating-add-card child-region-add" data-collapsed={hidden} aria-hidden={hidden} disabled={hidden} tabIndex={hidden?-1:0} aria-label={uiText("webview/CardRegions.text007")} title={uiText("webview/CardRegions.text007")} onClick={()=>{if(!hidden)add();}}><AddIcon/></button>
   </div>;
 }

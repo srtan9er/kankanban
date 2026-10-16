@@ -81,10 +81,10 @@ export async function connectDesktopDrag({controller:c,label,window:w,windows,re
   const startDrag = (id: string, event: ReactPointerEvent, mode?: CanvasDragAction): void => {
     if(document.documentElement.dataset.doodleExiting)return;
     const fixed=mode==='window-fixed';
-    const combinedGesture=mode!==undefined && canvasGesture(event.button,event.buttons)==='combined';
     const targetElement=event.target as HTMLElement;
     const relationHandle=!!targetElement.closest('.reparent-grip');
     const inCanvas=!!targetElement.closest('.canvas-note,.canvas-viewport');
+    const combinedGesture=inCanvas && mode!==undefined && canvasGesture(event.button,event.buttons)==='combined';
     const configured=canvasBindings(c.view)[canvasGesture(event.button,event.buttons)];
     if(mode==='pan'){const previous=stopActiveDrag?.() ?? Promise.resolve();const generation=++dragGeneration;void previous.then(()=>{if(generation===dragGeneration)dragState.fixed=false;});clearCanvasDrag('cancel');event.stopPropagation();return;}
     const childBody=!!targetElement.closest('[data-card-id]') && !relationHandle;
@@ -213,7 +213,7 @@ export async function connectDesktopDrag({controller:c,label,window:w,windows,re
     stopActiveDrag=()=>{cancelled=true;cleanup();return Promise.all([chain,motion,ending]).then(()=>{if(current())dragState.fixed=false;});};
     const key = (e: KeyboardEvent): void => { if (e.key === 'Escape') cancel(); };
     document.addEventListener('pointermove', move); document.addEventListener('pointerup', up); document.addEventListener('pointercancel', cancel); document.addEventListener('keydown', key);
-    stopReleaseWatch=watchDragRelease(captureTarget,pointerId,event.buttons,up);
+    stopReleaseWatch=watchDragRelease(captureTarget,pointerId,!inCanvas && mode!==undefined && event.buttons&2?2:event.buttons,up);
   };
  return {startDrag,dispose:()=>unlisteners.forEach(stop=>stop())};
 }

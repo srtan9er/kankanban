@@ -32,6 +32,9 @@ export function attachScrollMemory(root:HTMLElement,scope:string,cache=positions
   return JSON.stringify([scope,owner,region,column]);
  };
  const restore=(element:HTMLElement,binding:Binding)=>{
+  // A source-character anchor owns mode transitions; a cached pixel offset can
+  // refer to a different line after Markdown is rendered or made editable.
+  if(element.dataset.bodyPositionManaged==='true'){binding.pending=false;binding.hidden=false;return;}
   if(!element.clientWidth || !element.clientHeight){binding.hidden=true;return;}
   if(binding.hidden){binding.hidden=false;binding.target=cache.get(binding.key) ?? binding.target;binding.pending=true;binding.visibleAt=0;}
   if(!binding.pending)return;
@@ -44,6 +47,9 @@ export function attachScrollMemory(root:HTMLElement,scope:string,cache=positions
   if(disposed)return;
   const found=new Set<HTMLElement>();
   for(const [selector,region] of regions)for(const element of root.querySelectorAll<HTMLElement>(selector)){
+   // Shared body editors overflow into their persistent preview viewport.
+   // Binding them too would restore and overwrite the same body key at zero.
+   if(region==='body' && element.hasAttribute('data-markdown-editor') && element.closest('.card-body-editor'))continue;
    if(found.has(element))continue;found.add(element);
    const key=keyFor(element,region);let binding=bindings.get(element);
    if(!binding || binding.key!==key){binding={key,region,target:cache.get(key) ?? {left:0,top:0},pending:true,visibleAt:0,hidden:false};bindings.set(element,binding);resize?.observe(element);}
@@ -64,7 +70,7 @@ export function attachScrollMemory(root:HTMLElement,scope:string,cache=positions
  const mutation=new MutationObserver(records=>{
   // Infinite-plane transforms are not scrolling and must not rescan every frame.
   if(records.some(record=>record.attributeName==='data-scroll-owner' || !(record.target instanceof Element) || !record.target.closest('.canvas-viewport')))schedule();
- });mutation.observe(root,{childList:true,subtree:true,attributes:true,attributeFilter:['class','style','data-scroll-owner']});
+ });mutation.observe(root,{childList:true,subtree:true,attributes:true,attributeFilter:['class','style','data-scroll-owner','data-body-position-managed']});
  root.addEventListener('scroll',scroll,true);root.addEventListener('wheel',intent,true);root.addEventListener('pointerdown',intent,true);root.addEventListener('keydown',intent,true);window.addEventListener('pagehide',persist);
  scan();
  return()=>{disposed=true;if(frame!==undefined)cancelAnimationFrame(frame);mutation.disconnect();resize?.disconnect();root.removeEventListener('scroll',scroll,true);root.removeEventListener('wheel',intent,true);root.removeEventListener('pointerdown',intent,true);root.removeEventListener('keydown',intent,true);window.removeEventListener('pagehide',persist);if(cache===positions)persist();};

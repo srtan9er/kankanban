@@ -1,6 +1,7 @@
 import {validInk} from './drawing.ts';
 import {validCardImages,copyCardImages,readCardImages} from './card-images.ts';
 import {uiText} from '../i18n/text.ts';
+import {validLayoutSizes,copyLayoutSizes,type LayoutSizes} from './layout-sizes.ts';
 /**
  * 内存状态与事件应用（ARCHITECTURE.md §4.2 第 2 步、§4.3 重放一致性）。
  *
@@ -43,6 +44,7 @@ export const SETTABLE_FIELDS: ReadonlySet<string> = new Set([
   'images',
   'type',
   'layout',
+  'layoutSizes',
   'isPrefab',
   'prefabRef',
   'overrides',
@@ -57,7 +59,7 @@ export function fieldKeyOf(path: string): string {
   return path.startsWith('/') ? path.slice(1) : path;
 }
 
-type FieldKind = 'string' | 'string|null' | 'number' | 'boolean' | 'string[]' | 'ink|null' | 'images';
+type FieldKind = 'string' | 'string|null' | 'number' | 'boolean' | 'string[]' | 'ink|null' | 'images' | 'layoutSizes|null';
 
 /**
  * 可写字段的**值类型**。
@@ -77,6 +79,7 @@ const FIELD_KINDS: Readonly<Record<string, FieldKind>> = {
   content: 'string',
   doodle: 'ink|null',
   images:'images',
+  layoutSizes:'layoutSizes|null',
   createdBy: 'string',
   type: 'string|null',
   prefabRef: 'string|null',
@@ -91,6 +94,7 @@ const FIELD_KINDS: Readonly<Record<string, FieldKind>> = {
 const KIND_LABEL: Readonly<Record<FieldKind, string>> = {
   'ink|null':uiText('drawing.attributeType'),
   images:uiText('images.attributeType'),
+  'layoutSizes|null':uiText('layoutSizing.attributeType'),
   string: uiText("core/state.text001"),
   'string|null': uiText("core/state.text002"),
   number: uiText("core/state.text003"),
@@ -111,6 +115,7 @@ export function assertFieldValue(path: string, value: unknown): void {
 
   const ok = ((): boolean => {
     switch (kind) {
+      case 'layoutSizes|null':return value===null||validLayoutSizes(value);
       case 'images':return validCardImages(value);
       case 'ink|null':return value===null || validInk(value);
       case 'string':
@@ -232,7 +237,8 @@ function applyOne(state: CoreState, event: CardEvent): CoreState {
   switch (event.type) {
     case 'card_create': {
       const cards = new Map(state.cards);
-      cards.set(event.cardId, event.fields.images===undefined?event.fields:{...event.fields,images:readCardImages(event.fields.images)});
+      if(event.fields.layoutSizes!==undefined&&!validLayoutSizes(event.fields.layoutSizes))throw new Error(uiText('layoutSizing.invalid'));
+      cards.set(event.cardId, {...event.fields,...(event.fields.images===undefined?{}:{images:readCardImages(event.fields.images)}),...(event.fields.layoutSizes===undefined?{}:{layoutSizes:copyLayoutSizes(event.fields.layoutSizes)})});
 
       if (event.parentId === null || event.entry === null) {
         return { cards, children: state.children, lastAppliedSeq };
@@ -275,7 +281,9 @@ function applyOne(state: CoreState, event: CardEvent): CoreState {
 
       const cards = new Map(state.cards);
       // 计算键名的展开会被 TS 放宽成索引签名，这里显式收回 CardFields。
-      cards.set(event.cardId, { ...prev, [key]: key==='images'?copyCardImages(value as NonNullable<CardFields['images']>):value } as CardFields);
+      const next={ ...prev, [key]: key==='images'?copyCardImages(value as NonNullable<CardFields['images']>):key==='layoutSizes'&&value!==null?copyLayoutSizes(value as LayoutSizes):value } as CardFields;
+      if(key==='layoutSizes'&&value===null)delete next.layoutSizes;
+      cards.set(event.cardId,next);
       return { cards, children: state.children, lastAppliedSeq };
     }
 

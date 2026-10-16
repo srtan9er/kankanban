@@ -1,6 +1,7 @@
 import {validInk} from '../drawing.ts';
 import {readCardImages,copyCardImages} from '../card-images.ts';
 import {uiText} from '../../i18n/text.ts';
+import {validLayoutSizes,copyLayoutSizes} from '../layout-sizes.ts';
 /**
  * `cards/<id>.md` 的 frontmatter 编解码（ARCHITECTURE.md §8 的文件布局、§2.3 的字段表）。
  *
@@ -37,6 +38,7 @@ export const FRONTMATTER_FIELDS = [
   'title',
   'type',
   'layout',
+  'layoutSizes',
   'isPrefab',
   'prefabRef',
   'overrides',
@@ -56,7 +58,7 @@ const KNOWN = new Set<string>(FRONTMATTER_FIELDS);
 
 /** 把卡片字段序列化成完整 `.md` 文本。 */
 export function serializeCard(fields: CardFields): string {
-  const head = FRONTMATTER_FIELDS.filter(key=>key!=='images' || fields.images!==undefined).map((key) => `${key}: ${JSON.stringify(key==='images'?copyCardImages(fields.images!):(key === 'prefabBase' || key === 'doodle') ? fields[key] ?? null : fields[key])}`);
+  const head = FRONTMATTER_FIELDS.filter(key=>(key!=='images'||fields.images!==undefined)&&(key!=='layoutSizes'||fields.layoutSizes!==undefined)).map((key) => `${key}: ${JSON.stringify(key==='images'?copyCardImages(fields.images!):(key === 'prefabBase' || key === 'doodle') ? fields[key] ?? null : fields[key])}`);
   // 收尾的换行是刻意的：正文永远紧跟在结束分隔符的换行之后，解析时正好切掉那一个换行。
   return [FENCE, ...head, FENCE, fields.content].join('\n');
 }
@@ -109,11 +111,12 @@ export function parseCard(text: string): CardFields {
   }
 
   if(!raw.has('doodle'))raw.set('doodle',null);
+  if(raw.has('layoutSizes')&&!validLayoutSizes(raw.get('layoutSizes')))throw new Error(uiText('layoutSizing.invalid'));
   if(raw.has('images'))raw.set('images',readCardImages(raw.get('images')));
   if(raw.get('doodle')!==null && !validInk(raw.get('doodle')))throw new Error(uiText('drawing.invalid'));
   if (!raw.has('prefabBase')) raw.set('prefabBase', null);
   for (const key of FRONTMATTER_FIELDS) {
-    if(key==='images')continue;
+    if(key==='images'||key==='layoutSizes')continue;
     if (!raw.has(key)) {
       throw new Error(uiText("core/storage/frontmatter.text007", {arg0: (key)}));
     }
@@ -127,6 +130,7 @@ export function parseCard(text: string): CardFields {
     doodle:raw.get('doodle') as CardFields['doodle'] ?? null,
     type: expectStringOrNull(raw, 'type'),
     layout: expectLayout(raw),
+    ...(raw.has('layoutSizes')?{layoutSizes:copyLayoutSizes(raw.get('layoutSizes') as NonNullable<CardFields['layoutSizes']>)}:{}),
     isPrefab: expectBoolean(raw, 'isPrefab'),
     prefabRef: expectStringOrNull(raw, 'prefabRef'),
     overrides: expectStringArray(raw, 'overrides'),

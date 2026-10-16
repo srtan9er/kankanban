@@ -9,8 +9,9 @@ import {rendererOf,isBoard} from './renderer.ts';
 import {entryKindOf,reshapeEntries} from './entries.ts';
 import {pathFromRoot} from './scope.ts';
 import {parseCardImages} from './image-markdown.ts';
+import {copyLayoutSizes,validLayoutSizes,type LayoutSizes} from './layout-sizes.ts';
 
-export type ShareCard={id:string;title:string;content:string;layout:Layout;type:string|null;prefabRef:string|null;isPrefab:boolean;images:CardImage[];doodle:InkDocument|null};
+export type ShareCard={id:string;title:string;content:string;layout:Layout;layoutSizes?:LayoutSizes;type:string|null;prefabRef:string|null;isPrefab:boolean;images:CardImage[];doodle:InkDocument|null};
 export type SharePackage={format:'kankanban-card';version:1;rootId:string;cards:ShareCard[];children:{parentId:string;entries:ChildEntry[]}[];assets:{assetId:string;base64:string}[]};
 export type ShareAssetMetadata=Pick<CardImage,'mime'|'width'|'height'|'name'>;
 
@@ -43,7 +44,7 @@ export function buildSharePackage(state:CoreState,rootId:string,assets:ReadonlyM
  const cards:ShareCard[]=walk.ids.map(id=>{
   const card=state.cards.get(id)!;if(card.deleted)fail('share.invalidTree');
   const type=card.type!==null && ids.has(card.type)?card.type:null;
-  return {id,title:card.title,content:card.content,layout:card.type!==null && type===null?rendererOf(state,id):card.layout,type,prefabRef:card.prefabRef!==null && ids.has(card.prefabRef)?card.prefabRef:null,isPrefab:card.isPrefab,images:referencedImages(card.content,card.images ?? [],assetMetadata),doodle:card.doodle?cleanInk(card.doodle,ids):null};
+  return {id,title:card.title,content:card.content,layout:card.type!==null && type===null?rendererOf(state,id):card.layout,...(card.layoutSizes===undefined?{}:{layoutSizes:copyLayoutSizes(card.layoutSizes)}),type,prefabRef:card.prefabRef!==null && ids.has(card.prefabRef)?card.prefabRef:null,isPrefab:card.isPrefab,images:referencedImages(card.content,card.images ?? [],assetMetadata),doodle:card.doodle?cleanInk(card.doodle,ids):null};
  });
  const byId=new Map(cards.map(card=>[card.id,card]));
  const children=Object.entries(walk.snapshot.children).map(([parentId,entries])=>{
@@ -62,8 +63,8 @@ export function parseSharePackage(value:unknown):SharePackage{
  if(value.cards.length<1 || value.cards.length>MAX_SHARE_CARDS || value.children.length>MAX_SHARE_CARDS || value.assets.length>MAX_SHARE_ASSETS)fail('share.tooLarge');
  const cards:ShareCard[]=[],byId=new Map<string,ShareCard>(),used=new Set<string>(),imageDimensions=new Map<string,{width:number;height:number}>();let textSize=0,points=0;
  for(const item of value.cards){
-  if(!exact(item,['id','title','content','layout','type','prefabRef','isPrefab','images','doodle']) || !validId(item.id) || byId.has(item.id) || !bounded(item.title,65536) || !bounded(item.content,MAX_SHARE_TEXT) || typeof item.layout!=='string' || !layouts.has(item.layout) || !reference(item.type) || !reference(item.prefabRef) || typeof item.isPrefab!=='boolean' || !validCardImages(item.images) || (item.doodle!==null && !safeInk(item.doodle)))fail('share.invalid');
-  const card:ShareCard={id:item.id,title:item.title,content:item.content,layout:item.layout as Layout,type:item.type,prefabRef:item.prefabRef,isPrefab:item.isPrefab,images:copyCardImages(item.images),doodle:item.doodle===null?null:cleanInk(item.doodle)};
+  if(!exact(item,['id','title','content','layout','type','prefabRef','isPrefab','images','doodle'],['layoutSizes']) || !validId(item.id) || byId.has(item.id) || !bounded(item.title,65536) || !bounded(item.content,MAX_SHARE_TEXT) || typeof item.layout!=='string' || !layouts.has(item.layout) || !reference(item.type) || !reference(item.prefabRef) || typeof item.isPrefab!=='boolean' || !validCardImages(item.images) || (item.doodle!==null && !safeInk(item.doodle)) || item.layoutSizes!==undefined&&!validLayoutSizes(item.layoutSizes))fail('share.invalid');
+  const card:ShareCard={id:item.id,title:item.title,content:item.content,layout:item.layout as Layout,...(item.layoutSizes===undefined?{}:{layoutSizes:copyLayoutSizes(item.layoutSizes as LayoutSizes)}),type:item.type,prefabRef:item.prefabRef,isPrefab:item.isPrefab,images:copyCardImages(item.images),doodle:item.doodle===null?null:cleanInk(item.doodle)};
   // Undo-retained orphan metadata is local history, never part of a portable package.
   if(referencedImages(card.content,card.images).length!==card.images.length)fail('share.unusedAsset');
   textSize+=card.title.length+card.content.length;
@@ -167,7 +168,7 @@ export function importSharePackage(session:Session,value:unknown,parentId:string
  const ordered:{id:string;parentId:string|null;plane:PlanePlacement|undefined}[]=[{id:pkg.rootId,parentId,plane}];
  for(let index=0;index<ordered.length;index++)for(const entry of children.get(ordered[index]!.id) ?? [])ordered.push({id:entry.id,parentId:ids.get(ordered[index]!.id)!,plane:'x' in entry?{x:entry.x,y:entry.y,w:entry.w,h:entry.h,z:entry.z}:undefined});
  transact(session,draft=>{
-  for(const node of ordered){const card=byId.get(node.id)!;createCard(draft,{id:ids.get(card.id)!,parentId:node.parentId,title:card.title,content:card.content,layout:card.layout,isPrefab:templates,images:images.get(card.id)!,doodle:inks.get(card.id)!,plane:node.plane});}
+  for(const node of ordered){const card=byId.get(node.id)!;createCard(draft,{id:ids.get(card.id)!,parentId:node.parentId,title:card.title,content:card.content,layout:card.layout,layoutSizes:card.layoutSizes,isPrefab:templates,images:images.get(card.id)!,doodle:inks.get(card.id)!,plane:node.plane});}
   for(const card of pkg.cards)if(card.type!==null)setField(draft,ids.get(card.id)!,'/type',ids.get(card.type)!);
  });
  return {rootId:ids.get(pkg.rootId)!,ids:[...ids.values()],assetIds:pkg.assets.map(asset=>asset.assetId)};

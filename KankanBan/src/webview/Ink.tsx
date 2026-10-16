@@ -73,7 +73,7 @@ export function InkPill({mode,toggle}:{mode:DoodleTool;toggle:(tool:'pen'|'erase
   <button type="button" aria-pressed={mode==='eraser'} aria-label={uiText('drawing.eraser')} title={uiText('drawing.eraserHint')} onClick={()=>toggle('eraser')}><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m4 12 7-8 6 5-7 8H7zM8 8l6 5M10 17h7"/></svg></button>
  </div>;
 }
-/** Consume the exit click before card drag/title/body handlers can run. */
+/** Right press exits before the same event reaches the window's drag capture. */
 export function useDoodleMode(host:RefObject<HTMLElement|null>,ink:InkController,prepare?:()=>Promise<unknown>,entered?:()=>void,exited?:()=>void) {
  const [mode,setMode]=useState<DoodleTool>(null),[error,setError]=useState('');
  const active=useRef<DoodleTool>(null),activation=useRef(0);
@@ -86,22 +86,17 @@ export function useDoodleMode(host:RefObject<HTMLElement|null>,ink:InkController
  useEffect(()=>{
   if(!mode)return;
   const exitClick=(event:MouseEvent)=>{
-   if(event.button!==0 || !active.current || !(event.target instanceof Element) || event.target.closest('.ink-pill'))return;
+   if(!(event.button===2 || (event.buttons&2)!==0) || !active.current || !(event.target instanceof Element))return;
    const card=host.current?.closest('.proto-note > .card,.workspace-main');
-   if(!(card ?? host.current)?.contains(event.target))return;
-   event.preventDefault();event.stopImmediatePropagation();leave();
-   document.documentElement.dataset.doodleExiting='true';
-   const swallow=(click:MouseEvent)=>{click.preventDefault();click.stopImmediatePropagation();};
-   const reset=()=>{delete document.documentElement.dataset.doodleExiting;document.removeEventListener('click',swallow,true);document.removeEventListener('mouseup',up,true);document.removeEventListener('pointerdown',reset,true);window.removeEventListener('blur',reset);};
-   const up=(release:MouseEvent)=>{if(!release.buttons)setTimeout(reset,0);};
-   document.addEventListener('click',swallow,{capture:true,once:true});document.addEventListener('mouseup',up,true);document.addEventListener('pointerdown',reset,{capture:true,once:true});window.addEventListener('blur',reset,{once:true});
+   if(!(card ?? host.current)?.contains(event.target) && !event.target.closest('.viewport-ink-toolbar'))return;
+   event.preventDefault();leave();
   };
   const keys=(event:KeyboardEvent)=>{
    if(event.key==='Escape'){event.preventDefault();event.stopPropagation();leave();}
    else if((event.ctrlKey || event.metaKey) && ['z','y'].includes(event.key.toLowerCase())){event.preventDefault();event.stopPropagation();if(event.shiftKey || event.key.toLowerCase()==='y')ink.redo();else ink.undo();}
   };
-  document.addEventListener('pointerdown',exitClick,true);document.addEventListener('mousedown',exitClick,true);document.addEventListener('keydown',keys,true);
-  return()=>{document.removeEventListener('pointerdown',exitClick,true);document.removeEventListener('mousedown',exitClick,true);document.removeEventListener('keydown',keys,true);};
+  document.addEventListener('pointerdown',exitClick,true);document.addEventListener('mousedown',exitClick,true);document.addEventListener('pointermove',exitClick,true);document.addEventListener('mousemove',exitClick,true);document.addEventListener('keydown',keys,true);
+  return()=>{document.removeEventListener('pointerdown',exitClick,true);document.removeEventListener('mousedown',exitClick,true);document.removeEventListener('pointermove',exitClick,true);document.removeEventListener('mousemove',exitClick,true);document.removeEventListener('keydown',keys,true);};
  },[mode]);
- return {mode,toggle,error};
+ return {mode,toggle,error,isActive:()=>active.current!==null};
 }

@@ -29,6 +29,9 @@ struct Provider {
 }
 fn provider(id:&str)->Option<Provider>{match id{"git"=>Some(Provider{configure:crate::git_ops::validate_config,execute:crate::git_ops::execute_desktop}),_=>None}}
 fn key(app:&tauri::AppHandle,id:&str)->Result<String,String>{if provider(id).is_none(){return Err(crate::i18n::text("extensions.missing",&[]));}Ok(format!("{}:{id}",crate::desktop::root(app)?.to_string_lossy()))}
+fn result_event(workspace:&std::path::Path,job:u64,reply:&Value)->Value{
+ json!({"workspace":crate::desktop::display_path(workspace),"jobId":job,"reply":{"id":reply["id"],"method":reply["method"],"state":reply["state"],"error":reply["error"]}})
+}
 #[tauri::command]
 pub async fn extension_control(app:tauri::AppHandle,window:tauri::WebviewWindow,id:String,method:String,args:Value)->Result<Value,String>{
  crate::desktop::require_main(&window)?;let key=key(&app,&id)?;let state=app.state::<Arc<ExtensionState>>();let mut slots=state.slots.lock().map_err(|e|e.to_string())?;
@@ -41,7 +44,7 @@ pub async fn extension_control(app:tauri::AppHandle,window:tauri::WebviewWindow,
  "status"=>{},
  _=>return Err(crate::i18n::text("extensions.invalid",&[]))
  }
- let status=slots.get(&key).map(|s|json!({"enabled":s.enabled,"running":s.running>0,"root":s.root.to_string_lossy()})).unwrap_or(Value::Null);Ok(status)
+ let status=slots.get(&key).map(|s|json!({"enabled":s.enabled,"running":s.running>0,"root":crate::desktop::display_path(&s.root)})).unwrap_or(Value::Null);Ok(status)
 }
 #[tauri::command]
 pub async fn extension_start(app:tauri::AppHandle,window:tauri::WebviewWindow,id:String,method:String,args:Value)->Result<Value,String>{
@@ -49,7 +52,7 @@ pub async fn extension_start(app:tauri::AppHandle,window:tauri::WebviewWindow,id
  if provider(&id).is_none() || !args.is_object() || serde_json::to_vec(&args).map_err(|e|e.to_string())?.len()>1024*1024{return Err(crate::i18n::text("extensions.invalid",&[]));}
  let state=app.state::<Arc<ExtensionState>>().inner().clone();let (root,queue,ticket)={let mut slots=state.slots.lock().map_err(|e|e.to_string())?;let slot=slots.get_mut(&key).ok_or_else(||crate::i18n::text("extensions.missing",&[]))?;if !slot.enabled{return Err(crate::i18n::text("extensions.notEnabled",&[]));}slot.reserve()?};
  let job=state.next.fetch_add(1,Ordering::SeqCst)+1;state.jobs.lock().map_err(|e|e.to_string())?.insert(job,json!({"id":id,"method":method,"state":"queued"}));
- let workspace=crate::desktop::root(&app)?.to_string_lossy().to_string();
+ let workspace=crate::desktop::root(&app)?;
  thread::spawn(move||{
   let result=queue.run(ticket,||{
    if let Ok(mut jobs)=state.jobs.lock(){jobs.insert(job,json!({"id":id,"method":method,"state":"running"}));}
@@ -58,7 +61,7 @@ pub async fn extension_start(app:tauri::AppHandle,window:tauri::WebviewWindow,id
   let reply=match result{Ok(value)=>json!({"id":id,"method":method,"state":"done","result":value}),Err(error)=>json!({"id":id,"method":method,"state":"failed","error":error})};
   if let Ok(mut jobs)=state.jobs.lock(){jobs.insert(job,reply.clone());while jobs.len()>64 || jobs.values().map(|v|serde_json::to_vec(v).map(|b|b.len()).unwrap_or(0)).sum::<usize>()>32*1024*1024{if let Some(old)=jobs.keys().copied().find(|old|*old!=job && (jobs[old]["state"]=="done" || jobs[old]["state"]=="failed")){jobs.remove(&old);}else{break;}}}
   if let Ok(mut slots)=state.slots.lock(){if let Some(slot)=slots.get_mut(&key){slot.running=slot.running.saturating_sub(1);}}
-  let _=app.emit("kkb:extension-result",json!({"workspace":workspace,"jobId":job,"reply":{"id":reply["id"],"method":reply["method"],"state":reply["state"],"error":reply["error"]}}));
+  let _=app.emit("kkb:extension-result",result_event(&workspace,job,&reply));
  });
  Ok(json!({"jobId":job}))
 }
@@ -68,6 +71,12 @@ pub async fn extension_job(app:tauri::AppHandle,window:tauri::WebviewWindow,job_
 #[cfg(test)]
 mod tests {
  use super::*;
+ #[test] fn completion_event_matches_the_workspace_path_exposed_to_the_webview(){
+  for path in [r"\\?\C:\Users\test\workspace",r"\\?\UNC\server\share"]{
+   let workspace=std::path::Path::new(path);let event=result_event(workspace,7,&json!({"id":"git","method":"status","state":"done","result":{"large":"payload"}}));
+   assert_eq!(event["workspace"],crate::desktop::display_path(workspace));assert_eq!(event["jobId"],7);assert!(event["reply"].get("result").is_none());
+  }
+ }
  #[test] fn another_window_can_queue_work_without_a_busy_rejection(){
   let mut slot=Slot::new(PathBuf::from("repo"),true);assert!(slot.reserve().is_ok());assert!(slot.reserve().is_ok(),"a read in another window must not reject the next request");
  }

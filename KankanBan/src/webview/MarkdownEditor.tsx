@@ -1,13 +1,19 @@
-import {nameInsertedTables} from '../core/table-markdown.ts';
-import {forwardRef,useImperativeHandle,useLayoutEffect,useRef,type ClipboardEvent,type DragEvent,type FocusEventHandler,type KeyboardEventHandler,type PointerEventHandler,type ClipboardEventHandler,type DragEventHandler} from 'react';
+import {emptyTableMarkup,nameInsertedTables} from '../core/table-markdown.ts';
+import {forwardRef,useContext,useImperativeHandle,useLayoutEffect,useRef,type ClipboardEvent,type DragEvent,type FocusEventHandler,type KeyboardEventHandler,type PointerEventHandler,type ClipboardEventHandler,type DragEventHandler} from 'react';
+import {EditMode} from './edit-mode.ts';
 import {getMarkdownEditorAtoms,getMarkdownEditorRange,getMarkdownEditorSelection,mapMarkdownEditorOffset,markdownEditorNeedsRender,normalizeMarkdownEditorSelection,readMarkdownEditor,renderMarkdownEditor,setMarkdownEditorSelection,type MarkdownEditorRange} from './markdown-editor-model.ts';
 import './markdown-editor.css';
 import {nameInsertedImages} from '../core/image-identity.ts';
 export {getMarkdownEditorSelection,readMarkdownEditor} from './markdown-editor-model.ts';
-export type MarkdownEditorProps={value:string;onChange:(value:string)=>void;onBlur?:FocusEventHandler<HTMLDivElement>|undefined;onPointerDown?:PointerEventHandler<HTMLDivElement>|undefined;onKeyDown?:KeyboardEventHandler<HTMLDivElement>|undefined;onPaste?:ClipboardEventHandler<HTMLDivElement>|undefined;onDrop?:DragEventHandler<HTMLDivElement>|undefined;disabled?:boolean|undefined;placeholder?:string|undefined;'aria-label'?:string|undefined;className?:string|undefined;autoFocus?:boolean|undefined};
+export type MarkdownEditorProps={value:string;onChange:(value:string)=>void;onBlur?:FocusEventHandler<HTMLDivElement>|undefined;onPointerDown?:PointerEventHandler<HTMLDivElement>|undefined;onKeyDown?:KeyboardEventHandler<HTMLDivElement>|undefined;onPaste?:ClipboardEventHandler<HTMLDivElement>|undefined;onDrop?:DragEventHandler<HTMLDivElement>|undefined;disabled?:boolean|undefined;readOnly?:boolean|undefined;placeholder?:string|undefined;'aria-label'?:string|undefined;className?:string|undefined;autoFocus?:boolean|undefined};
 type HistoryEntry={value:string;selection:MarkdownEditorRange};
 const initialRange:MarkdownEditorRange={start:0,end:0,backward:false,inside:false};
-export const MarkdownEditor=forwardRef<HTMLDivElement,MarkdownEditorProps>(function MarkdownEditor({value,onChange,onBlur,onPointerDown,onKeyDown,onPaste,onDrop,disabled=false,placeholder,className,autoFocus,...aria},ref){
+const markupInsertions=new WeakMap<HTMLElement,(raw:string)=>boolean>();
+/** Inserts through the mounted editor's own naming, selection and undo transaction. */
+export function insertMarkdownEditorMarkup(host:HTMLElement,raw:string):boolean{return markupInsertions.get(host)?.(raw) ?? false;}
+export const MarkdownEditor=forwardRef<HTMLDivElement,MarkdownEditorProps>(function MarkdownEditor({value,onChange,onBlur,onPointerDown,onKeyDown,onPaste,onDrop,disabled=false,readOnly=false,placeholder,className,autoFocus,...aria},ref){
+ const {editable}=useContext(EditMode);
+ const locked=disabled||readOnly;
  const host=useRef<HTMLDivElement>(null),composing=useRef(false);
  const history=useRef<{entries:HistoryEntry[];index:number}>({entries:[{value,selection:{...initialRange}}],index:0}),beforeRecorded=useRef(false),emitted=useRef<string|null>(null),nativeHistory=useRef<(redo:boolean)=>void>(()=>undefined);
  useImperativeHandle(ref,()=>host.current!,[]);
@@ -33,44 +39,65 @@ export const MarkdownEditor=forwardRef<HTMLDivElement,MarkdownEditorProps>(funct
  };
  const emit=(next:string)=>{emitted.current=next;onChange(next);};
  const restore=(redo:boolean)=>{
-  const element=host.current;if(!element || disabled || composing.current)return;const state=history.current,index=state.index+(redo?1:-1);if(index<0 || index>=state.entries.length)return;
+  const element=host.current;if(!element || locked || composing.current)return;const state=history.current,index=state.index+(redo?1:-1);if(index<0 || index>=state.entries.length)return;
   state.entries[state.index]!.selection=getMarkdownEditorRange(element);state.index=index;const entry=state.entries[index]!;renderMarkdownEditor(element,entry.value);setMarkdownEditorSelection(element,entry.selection.start,entry.selection.end,entry.selection.backward);beforeRecorded.current=false;emit(entry.value);
  };
  nativeHistory.current=restore;
  useLayoutEffect(()=>{
   const element=host.current;if(!element)return;
-  const before=(event:InputEvent)=>{if(disabled)return;if(event.inputType==='historyUndo' || event.inputType==='historyRedo'){event.preventDefault();event.stopPropagation();nativeHistory.current(event.inputType==='historyRedo');return;}if(!composing.current)captureBefore(readMarkdownEditor(element),getMarkdownEditorRange(element));};
+  const before=(event:InputEvent)=>{if(locked){event.preventDefault();return;}if(event.inputType==='historyUndo' || event.inputType==='historyRedo'){event.preventDefault();event.stopPropagation();nativeHistory.current(event.inputType==='historyRedo');return;}if(!composing.current)captureBefore(readMarkdownEditor(element),getMarkdownEditorRange(element));};
   element.addEventListener('beforeinput',before);return()=>element.removeEventListener('beforeinput',before);
- },[disabled]);
+ },[locked]);
  const publish=()=>{
-  if(disabled)return;
+  if(locked)return;
   const element=host.current!;const next=readMarkdownEditor(element),selection=getMarkdownEditorRange(element);
   if(!composing.current && markdownEditorNeedsRender(element,next)){renderMarkdownEditor(element,next);if(selection.inside)setMarkdownEditorSelection(element,selection.start,selection.end,selection.backward);}
   if(!composing.current)record(next,selection);element.dataset.empty=next.length===0?'true':'false';emit(next);
  };
- const replaceSelection=(replacement:string,previousSelection?:MarkdownEditorRange)=>{
+ const replaceSelection=(replacement:string,previousSelection?:MarkdownEditorRange,afterSelection?:MarkdownEditorRange)=>{
   const element=host.current!,source=readMarkdownEditor(element),selection=getMarkdownEditorRange(element);
   const surrounding=source.slice(0,selection.start)+source.slice(selection.end);
   if(replacement.includes('<image'))replacement=nameInsertedImages(replacement,surrounding);
   if(replacement.includes('<table') || replacement.includes('|'))replacement=nameInsertedTables(replacement,surrounding);
   const next=source.slice(0,selection.start)+replacement+source.slice(selection.end);
-  captureBefore(source,previousSelection ?? selection);renderMarkdownEditor(element,next);setMarkdownEditorSelection(element,selection.start+replacement.length);record(next,getMarkdownEditorRange(element));element.dataset.empty=next.length===0?'true':'false';emit(next);
+  captureBefore(source,previousSelection ?? selection);renderMarkdownEditor(element,next);if(afterSelection)setMarkdownEditorSelection(element,afterSelection.start,afterSelection.end,afterSelection.backward);else setMarkdownEditorSelection(element,selection.start+replacement.length);record(next,getMarkdownEditorRange(element));element.dataset.empty=next.length===0?'true':'false';emit(next);
  };
- const paste=(event:ClipboardEvent<HTMLDivElement>)=>{if(disabled){event.preventDefault();return;}onPaste?.(event);if(event.defaultPrevented)return;event.preventDefault();replaceSelection(event.clipboardData.getData('text/plain').replace(/\r\n?/g,'\n'));};
- const drop=(event:DragEvent<HTMLDivElement>)=>{if(disabled){event.preventDefault();return;}onDrop?.(event);if(event.defaultPrevented)return;event.preventDefault();if(!event.dataTransfer.files.length)replaceSelection(event.dataTransfer.getData('text/plain').replace(/\r\n?/g,'\n'));};
+ useLayoutEffect(()=>{
+  const element=host.current;if(!element)return;
+  markupInsertions.set(element,raw=>{if(locked || !editable || composing.current)return false;replaceSelection(raw);return true;});
+  return()=>{markupInsertions.delete(element);};
+ });
+ const toggleMark=(mark:string)=>{
+  const element=host.current!,source=readMarkdownEditor(element),range=getMarkdownEditorRange(element);if(!range.inside)return;
+  const selected=source.slice(range.start,range.end),before=source.slice(0,range.start),after=source.slice(range.end),length=mark.length;
+  // Single-star italic must never consume one half of a bold delimiter.
+  const oddStars=(text:string,atEnd=false)=>(text.match(atEnd?/\*+$/:/^\*+/)?.[0].length ?? 0)%2===1;
+  const selectedMarked=selected.length>=length*2 && selected.startsWith(mark) && selected.endsWith(mark) && (mark!=='*' || oddStars(selected) && oddStars(selected,true));
+  const surroundingMarked=before.endsWith(mark) && after.startsWith(mark) && (mark!=='*' || oddStars(before,true) && oddStars(after));
+  if(selectedMarked){replaceSelection(selected.slice(length,-length),range,{...range,end:range.end-length*2});}
+  else if(surroundingMarked){setMarkdownEditorSelection(element,range.start-length,range.end+length);replaceSelection(selected,range,{...range,start:range.start-length,end:range.end-length});}
+  else replaceSelection(mark+selected+mark,range,{...range,start:range.start+length,end:range.end+length});
+ };
+ const paste=(event:ClipboardEvent<HTMLDivElement>)=>{if(disabled){event.preventDefault();return;}onPaste?.(event);if(event.defaultPrevented)return;event.preventDefault();if(!readOnly)replaceSelection(event.clipboardData.getData('text/plain').replace(/\r\n?/g,'\n'));};
+ const drop=(event:DragEvent<HTMLDivElement>)=>{if(disabled){event.preventDefault();return;}onDrop?.(event);if(event.defaultPrevented)return;event.preventDefault();if(!readOnly && !event.dataTransfer.files.length)replaceSelection(event.dataTransfer.getData('text/plain').replace(/\r\n?/g,'\n'));};
  const copy=(event:ClipboardEvent<HTMLDivElement>,cut=false)=>{
   const element=host.current!,range=getMarkdownEditorRange(element);if(!range.inside || range.start===range.end)return;
-  event.preventDefault();event.clipboardData.setData('text/plain',readMarkdownEditor(element).slice(range.start,range.end));if(cut && !disabled)replaceSelection('');
+  event.preventDefault();event.clipboardData.setData('text/plain',readMarkdownEditor(element).slice(range.start,range.end));if(cut && !locked)replaceSelection('');
  };
- return <div {...aria} ref={host} className={`markdown-editor ${className ?? ''}`} data-markdown-editor="true" data-empty={value.length===0} data-placeholder={placeholder} role="textbox" aria-multiline="true" aria-disabled={disabled} contentEditable={!disabled} suppressContentEditableWarning spellCheck tabIndex={disabled?-1:0} onBlur={onBlur} onPointerDown={event=>{
+ return <div {...aria} ref={host} className={`markdown-editor ${className ?? ''}`} data-markdown-editor="true" data-empty={value.length===0} data-placeholder={placeholder} role="textbox" aria-multiline="true" aria-disabled={disabled} aria-readonly={readOnly} contentEditable={!locked} suppressContentEditableWarning spellCheck tabIndex={disabled?-1:0} onBlur={onBlur} onPointerDown={event=>{
   onPointerDown?.(event);if(disabled || event.defaultPrevented)return;const element=event.target as Element,atom=element.closest<HTMLElement>('[data-markdown-token]');if(!atom || !host.current?.contains(atom))return;
   event.preventDefault();host.current.focus();const range=document.createRange();range.selectNode(atom);const selection=document.getSelection();selection?.removeAllRanges();selection?.addRange(range);
  }} onInput={publish} onCompositionStart={()=>{if(host.current)captureBefore(readMarkdownEditor(host.current),getMarkdownEditorRange(host.current));composing.current=true;}} onCompositionEnd={()=>{composing.current=false;publish();}} onKeyDown={event=>{
   onKeyDown?.(event);if(event.defaultPrevented || composing.current || event.nativeEvent.isComposing)return;
-  if((event.ctrlKey || event.metaKey) && ['z','y'].includes(event.key.toLowerCase())){event.preventDefault();event.stopPropagation();if(!disabled)restore(event.key.toLowerCase()==='y' || event.shiftKey);return;}
-  if(disabled)return;
+  if((event.ctrlKey || event.metaKey) && ['z','y'].includes(event.key.toLowerCase())){event.preventDefault();event.stopPropagation();if(!locked)restore(event.key.toLowerCase()==='y' || event.shiftKey);return;}
+  if(locked)return;
+  if(editable && (event.ctrlKey || event.metaKey) && event.key.toLowerCase()==='t' && !event.altKey && !event.shiftKey){event.preventDefault();event.stopPropagation();replaceSelection(emptyTableMarkup(readMarkdownEditor(host.current!)));return;}
   if(event.key==='Enter' && !event.ctrlKey && !event.metaKey){event.preventDefault();replaceSelection('\n');return;}
-  if((event.ctrlKey || event.metaKey) && ['b','i','u'].includes(event.key.toLowerCase())){event.preventDefault();return;}
+  if((event.ctrlKey || event.metaKey) && !event.altKey){
+   const key=event.key.toLowerCase(),mark=!event.shiftKey && key==='b'?'**':!event.shiftKey && key==='i'?'*':event.shiftKey && key==='x'?'~~':null;
+   if(mark && editable){event.preventDefault();event.stopPropagation();toggleMark(mark);return;}
+   if(key==='u'){event.preventDefault();return;}
+  }
   if(event.key!=='Backspace' && event.key!=='Delete')return;
   const element=host.current!,range=getMarkdownEditorRange(element),atoms=getMarkdownEditorAtoms(element);if(!range.inside)return;
   if(range.start!==range.end && atoms.some(atom=>document.getSelection()?.getRangeAt(0).intersectsNode(atom.node))){event.preventDefault();replaceSelection('');return;}

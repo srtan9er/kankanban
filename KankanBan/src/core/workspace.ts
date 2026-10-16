@@ -1,5 +1,6 @@
 import {discardLegacyInk} from './drawing.ts';
 import {validCardImages,copyCardImages} from './card-images.ts';
+import {validLayoutSizes,copyLayoutSizes,type LayoutSizes} from './layout-sizes.ts';
 import {uiText} from '../i18n/text.ts';
 /**
  * core 操作层 —— ARCHITECTURE.md §9.1 的"唯一权威操作层"。
@@ -60,6 +61,7 @@ export type SessionOptions = {
 export type PlanePlacement = { x: number; y: number; w: number; h: number; z: number };
 
 export type CreateCardSpec = {
+  layoutSizes?:LayoutSizes|undefined;
   images?:CardFields['images'];
   doodle?:CardFields['doodle'];
   parentId: CardId | null;
@@ -173,6 +175,7 @@ export function entryFor(layout: Layout, id: CardId, order: number, plane?: Plan
 // ── 写操作 ─────────────────────────────────────────────────────────────────────
 
 export function createCard(session: Session, spec: CreateCardSpec): CardId {
+  if(spec.layoutSizes!==undefined&&!validLayoutSizes(spec.layoutSizes))throw new Error(uiText('layoutSizing.invalid'));
   if(spec.images!==undefined && !validCardImages(spec.images))throw new Error(uiText('images.invalid'));
   if (spec.parentId !== null && isBoard(session.state, spec.parentId) && childList(session.state, spec.parentId).length >= 3) {
     throw new Error(uiText("core/workspace.text002"));
@@ -196,6 +199,7 @@ export function createCard(session: Session, spec: CreateCardSpec): CardId {
     doodle:spec.doodle ?? null,
     type: spec.type ?? null,
     layout: spec.layout ?? 'plain',
+    ...(spec.layoutSizes===undefined?{}:{layoutSizes:copyLayoutSizes(spec.layoutSizes)}),
     isPrefab: spec.isPrefab ?? false,
     prefabRef: null,
     overrides: [],
@@ -264,8 +268,9 @@ export function setField(session: Session, cardId: CardId, path: FieldPath, valu
   const key = path.startsWith('/') ? path.slice(1) : path;
   if(key==='images' && !validCardImages(value))throw new Error(uiText('images.invalid'));
   const previous = (fields as unknown as Record<string, unknown>)[key];
-  const from = key==='images'?copyCardImages(previous as CardFields['images'] ?? []):(key === 'prefabBase' || key === 'doodle') ? previous ?? null : previous;
-  const to=key==='images'?copyCardImages(value as NonNullable<CardFields['images']>):value;
+  const from = key==='layoutSizes'?previous===undefined?null:copyLayoutSizes(previous as LayoutSizes):key==='images'?copyCardImages(previous as CardFields['images'] ?? []):(key === 'prefabBase' || key === 'doodle') ? previous ?? null : previous;
+  if(key==='layoutSizes'&&value!==null&&!validLayoutSizes(value))throw new Error(uiText('layoutSizing.invalid'));
+  const to=key==='layoutSizes'&&value!==null?copyLayoutSizes(value as LayoutSizes):key==='images'?copyCardImages(value as NonNullable<CardFields['images']>):value;
 
   // 值没变就不发事件：日志里全是空操作会让"最近改动"这种读法失效，也让撤销变得没用。
   if (stableStringify(from) === stableStringify(to)) return;

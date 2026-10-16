@@ -1,4 +1,5 @@
 import {isSkin,type SkinId} from './skins.ts';
+import {validThemeId} from './themes.ts';
 import {windowAnchor,newExpansionId} from './window-identity.ts';
 import {uiText} from '../i18n/text.ts';
 import {validCanvasBindings,type CanvasDragBindings} from './canvas-drag.ts';
@@ -50,7 +51,9 @@ export type ViewState = {
   extensions?:Record<string,import('../extensions/registry.ts').ExtensionConfig>;
   userSignature?: string;
   tutorialCardId?:string;
+  tutorialEdition?:number;
   skin?: SkinId;
+  theme?:string;
   cardRadius?: number;
   canvasSwapButtons?: boolean;
   canvasDragBindings?: CanvasDragBindings;
@@ -204,7 +207,9 @@ type StoredViewState = {
   extensions?:ViewState['extensions'];
   userSignature?: string;
   tutorialCardId?:unknown;
+  tutorialEdition?:unknown;
   skin?: unknown;
+  theme?:unknown;
   cardRadius?: number;
   canvasSwapButtons?: boolean;
   canvasDragBindings?: CanvasDragBindings;
@@ -241,7 +246,9 @@ export function readViewState(root: string, ops: FsOps = defaultFsOps()): ViewSt
     ...(parsed.extensions && typeof parsed.extensions==='object' && !Array.isArray(parsed.extensions)?{extensions:Object.fromEntries(Object.entries(parsed.extensions).filter(([id,value])=>/^[a-z][a-z0-9-]{0,63}$/.test(id) && value && typeof value.installed==='boolean' && typeof value.enabled==='boolean' && value.config && typeof value.config==='object' && !Array.isArray(value.config)))}:{}),
     ...(typeof parsed.userSignature==='string'?{userSignature:parsed.userSignature}:{}),
     ...(typeof parsed.tutorialCardId==='string'?{tutorialCardId:parsed.tutorialCardId}:{}),
+    ...(typeof parsed.tutorialEdition==='number'&&Number.isSafeInteger(parsed.tutorialEdition)&&parsed.tutorialEdition>0?{tutorialEdition:parsed.tutorialEdition}:{}),
     skin:isSkin(parsed.skin)?parsed.skin:'light',
+    theme:validThemeId(parsed.theme)?parsed.theme:'',
     canvasSwapButtons: parsed.canvasSwapButtons !== false,
     ...(parsed.canvasDragBindings && validCanvasBindings(parsed.canvasDragBindings)?{canvasDragBindings:parsed.canvasDragBindings}:{}),
     cardRadius: typeof parsed.cardRadius === "number" && Number.isFinite(parsed.cardRadius) ? Math.min(MAX_CARD_RADIUS, Math.max(0, parsed.cardRadius)) : DEFAULT_CARD_RADIUS,

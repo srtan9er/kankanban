@@ -178,7 +178,7 @@ pub fn execute(directory:&Path,method:&str,args:&Value)->Result<Value,String>{
  "abortMerge"=>{if args["confirmed"]!=true{return Err(error("git.invalid"));}run(&root,&strings(&["merge","--abort"]))?;Ok(json!({"changed":true}))},
  "discard"=>{if args["confirmed"]!=true{return Err(error("git.invalid"));}let p=paths(args)?;for path in p{let tracked=run(&root,&strings(&["ls-files","--error-unmatch","--",&format!(":(literal){path}")])).is_ok();if tracked{run(&root,&strings(&["restore","--worktree","--",&format!(":(literal){path}")]))?;}else{let candidate=fs::canonicalize(root.join(&path)).map_err(|_|error("git.invalidPath"))?;remove_untracked(&root,&root.join(&path),&candidate)?;}}Ok(json!({"changed":true}))},
  "untrackKkb"=>{if args["confirmed"]!=true{return Err(error("git.invalid"));}if !protected_files.is_empty(){let mut cmd=strings(&["rm","--cached","-r","--"]);cmd.extend(protected_files.iter().map(|p|format!(":(literal){p}")));run(&root,&cmd)?;}Ok(json!({"untracked":protected_files.len()}))},
- "openFile"=>{let p=paths(&json!({"paths":[strarg(args,"path")?]}))?;let path=fs::canonicalize(root.join(&p[0])).map_err(|_|error("git.invalidPath"))?;if !path.starts_with(&root) || protected(&path.to_string_lossy()){return Err(error("git.invalidPath"));}Ok(json!({"path":path.to_string_lossy()}))},
+ "openFile"=>{let p=paths(&json!({"paths":[strarg(args,"path")?]}))?;let path=fs::canonicalize(root.join(&p[0])).map_err(|_|error("git.invalidPath"))?;if !path.starts_with(&root) || protected(&path.to_string_lossy()){return Err(error("git.invalidPath"));}Ok(json!({"path":crate::desktop::display_path(&path)}))},
  _=>Err(error("git.invalid"))
  }
 }
@@ -189,6 +189,10 @@ fn validate_url(url:&str)->Result<(),String>{if url.starts_with('-') || url.cont
 #[cfg(test)]
 mod tests {
  use super::*;
+ #[test] fn open_file_returns_a_normalized_external_path(){
+  let p=fixture();execute(&p,"init",&json!({})).unwrap();fs::write(p.join("file.txt"),"text").unwrap();
+  let result=execute(&p,"openFile",&json!({"path":"file.txt"})).unwrap();assert_eq!(result["path"],crate::desktop::display_path(&fs::canonicalize(p.join("file.txt")).unwrap()));fs::remove_dir_all(p).unwrap();
+ }
  #[test] fn stale_window_cannot_discard_a_file_in_another_repository(){
   let first=fixture();let second=fixture();execute(&first,"init",&json!({})).unwrap();execute(&second,"init",&json!({})).unwrap();fs::write(second.join("same.txt"),"keep this repository").unwrap();
   let result=execute(&second,"discard",&json!({"repository":first.to_string_lossy(),"paths":["same.txt"],"confirmed":true}));assert!(result.is_err(),"a window bound to another repository must not write here");assert_eq!(fs::read_to_string(second.join("same.txt")).unwrap(),"keep this repository");for p in [first,second]{fs::remove_dir_all(p).unwrap();}

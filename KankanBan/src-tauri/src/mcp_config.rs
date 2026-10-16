@@ -2,7 +2,7 @@ use serde_json::{json,Value};
 use tauri::{WebviewWindow,AppHandle};
 
 fn configuration(path:&std::path::Path)->Value {
-    json!({"mcpServers":{"KankanBan":{"command":path.to_string_lossy(),"args":[]}}})
+    json!({"mcpServers":{"KankanBan":{"command":crate::desktop::display_path(path),"args":[]}}})
 }
 #[tauri::command]
 pub async fn mcp_connection_config(app:AppHandle,window:WebviewWindow)->Result<Value,String> {
@@ -19,10 +19,11 @@ pub async fn mcp_connection_config(app:AppHandle,window:WebviewWindow)->Result<V
         if bundled.is_file(){path=bundled;}
     }
     let running=crate::mcp_bridge::running(&app);
-    Ok(json!({"available":path.is_file(),"bridgeReady":running,"path":path.to_string_lossy(),"configuration":configuration(&path)}))
+    Ok(json!({"available":path.is_file(),"bridgeReady":running,"path":crate::desktop::display_path(&path),"configuration":configuration(&path)}))
 }
 #[cfg(test)]
 mod tests {
  use super::*;
+ #[test] fn config_command_removes_windows_verbatim_prefix(){assert_eq!(configuration(std::path::Path::new(r"\\?\C:\Program Files\KankanBan\kankanban-mcp.exe"))["mcpServers"]["KankanBan"]["command"],"C:/Program Files/KankanBan/kankanban-mcp.exe");}
  #[test] fn config_has_no_node_source_or_secret(){let result=configuration(std::path::Path::new("C:/Program Files/KankanBan/kankanban-mcp.exe"));assert_eq!(result["mcpServers"]["KankanBan"]["args"],json!([]));assert_eq!(result["mcpServers"]["KankanBan"]["command"],"C:/Program Files/KankanBan/kankanban-mcp.exe");}
 }

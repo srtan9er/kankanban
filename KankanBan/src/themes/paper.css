@@ -1,0 +1,17 @@
+/* KankanBan: paper notes, restrained ink, clear content hierarchy.
+   Every declaration is optional. Built-in styles fill the missing values. */
+:root {
+ --palette-card:#fff4b8; --palette-prefab:#e6dcef; --palette-instance:#dcebdc;
+ --palette-background:#f8faf9; --palette-text:#333d3b; --palette-accent:#3b7179;
+ --palette-danger:#b44040; --palette-handle:#7a8584;
+ --md-font-family:"Microsoft YaHei UI","PingFang SC","Segoe UI",system-ui,sans-serif;
+ --md-mono-family:"Cascadia Code",Consolas,monospace;
+ --md-font-size:14px; --md-line-height:1.75; --md-paragraph-space:6px;
+ --md-h1-size:26px; --md-h2-size:21px; --md-h3-size:17px;
+ --md-heading-weight:600; --md-strong-weight:600;
+ --md-heading:var(--palette-text); --md-link:var(--palette-accent);
+ --md-quote-background:color-mix(in srgb,var(--palette-accent) 6%,transparent);
+}
+.rich-image-body h1 { letter-spacing:.02em; }
+.rich-image-body h2 { border-bottom:1px solid color-mix(in srgb,var(--md-heading) 14%,transparent); padding-bottom:.25em; }
+.rich-image-body blockquote { border-left:3px solid var(--palette-accent); }

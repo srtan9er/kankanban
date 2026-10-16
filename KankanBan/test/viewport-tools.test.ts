@@ -12,12 +12,12 @@ test('doodle tools stay anchored to the viewport and are outside scrolling docum
  host.getBoundingClientRect=()=>rect(10,20,300,200);
  try{
   await act(async()=>root.render(createElement(DrawingBody,{id:'card',content:'text',send:async()=>({})})));
-  const pill=document.querySelector('.ink-pill')!;assert.ok(pill);assert.ok(!host.querySelector('.drawing-body')!.contains(pill));
-  const toolbar=pill.parentElement!;assert.equal(toolbar.style.position,'fixed');const before={top:toolbar.style.top,left:toolbar.style.left};
+  const pill=document.querySelector('.ink-pill button[aria-pressed]')!.parentElement!;assert.ok(pill);assert.ok(!host.querySelector('.drawing-body')!.contains(pill));
+  const toolbar=pill.closest<HTMLElement>('.viewport-ink-toolbar')!;assert.equal(toolbar.style.position,'fixed');const before={left:toolbar.style.left,top:toolbar.style.top};
   host.scrollLeft=120;host.scrollTop=500;await act(async()=>host.dispatchEvent(new Event('scroll')));
-  assert.equal(toolbar.style.top,before.top);assert.equal(toolbar.style.left,before.left);
+  assert.equal(toolbar.style.left,before.left);assert.equal(toolbar.style.top,before.top);
   host.getBoundingClientRect=()=>rect(10,20,500,300);await act(async()=>window.dispatchEvent(new Event('resize')));
-  assert.equal(toolbar.style.top,before.top);assert.equal(Number.parseFloat(toolbar.style.left)-Number.parseFloat(before.left),200);
+  assert.equal(Number.parseFloat(toolbar.style.left)-Number.parseFloat(before.left),200);assert.equal(Number.parseFloat(toolbar.style.top)-Number.parseFloat(before.top),100);
   await act(async()=>pill.querySelector<HTMLButtonElement>('button')!.click());assert.equal(pill.querySelector('button')!.getAttribute('aria-pressed'),'true');
  }finally{await act(async()=>root.unmount());host.remove();}
  assert.equal(document.querySelector('.viewport-ink-toolbar'),null);

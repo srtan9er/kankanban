@@ -25,3 +25,22 @@ test('collapsed scroll area does not replace remembered location with zero',asyn
  try{f.area.dispatchEvent(new window.MouseEvent('pointerdown',{bubbles:true}));f.area.scrollTop=210;f.area.dispatchEvent(new window.Event('scroll'));f.hide();f.area.scrollTop=0;f.area.style.height='0px';f.area.dispatchEvent(new window.Event('scroll'));await tick();f.show();f.area.style.height='100px';await tick();assert.equal(f.area.scrollTop,210);
  }finally{stop();f.close();}
 });
+test('semantic body positioning suppresses old pixel restoration and still remembers later browsing',async()=>{
+ const f=fixture(),cache=new ScrollPositions(),stop=attachScrollMemory(f.root,'workspace/semantic',cache);
+ try{
+  f.area.dispatchEvent(new window.MouseEvent('pointerdown',{bubbles:true}));f.area.scrollTop=190;f.area.dispatchEvent(new window.Event('scroll'));
+  const replacement=document.createElement('div');replacement.className='preview';replacement.dataset.bodyPositionManaged='true';replacement.scrollTop=330;Object.defineProperties(replacement,{clientWidth:{value:200},clientHeight:{value:100}});f.area.replaceWith(replacement);await tick();assert.equal(replacement.scrollTop,330);
+  replacement.scrollTop=355;replacement.dispatchEvent(new window.Event('scroll'));const saved=cache.entries().find(([key])=>JSON.parse(key)[2]==='body');assert.equal(saved?.[1].top,355);
+  replacement.removeAttribute('data-body-position-managed');await tick();assert.equal(replacement.scrollTop,355);
+  f.root.dataset.scrollOwner='card:B';await tick();assert.equal(replacement.scrollTop,0);replacement.scrollTop=10;replacement.dispatchEvent(new window.Event('scroll'));
+  f.root.dataset.scrollOwner='card:A';await tick();assert.equal(replacement.scrollTop,355);
+ }finally{stop();f.close();}
+});
+test('a shared card body viewport alone owns scroll memory while its non-scrolling editor is ignored',async()=>{
+ const f=fixture(),cache=new ScrollPositions();f.area.classList.add('card-body-editor');const stop=attachScrollMemory(f.root,'workspace/shared-body',cache);let innerRestores=0;
+ try{
+  f.area.dispatchEvent(new window.MouseEvent('pointerdown',{bubbles:true}));f.area.scrollTop=190;f.area.dispatchEvent(new window.Event('scroll'));
+  const editor=document.createElement('div');editor.className='markdown-editor content';editor.dataset.markdownEditor='true';editor.style.overflow='visible';Object.defineProperties(editor,{clientWidth:{value:200},clientHeight:{value:1000},scrollTop:{get:()=>0,set:()=>{innerRestores++;}}});f.area.append(editor);await tick();assert.equal(innerRestores,0,'the inner editor cannot restore the viewport scroll offset');
+  editor.dispatchEvent(new window.MouseEvent('pointerdown',{bubbles:true}));editor.dispatchEvent(new window.Event('scroll'));assert.equal(cache.entries().find(([key])=>JSON.parse(key)[2]==='body')?.[1].top,190,'an inner zero scroll event must not replace the viewport position');assert.equal(f.area.scrollTop,190);
+ }finally{stop();f.close();}
+});

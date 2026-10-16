@@ -23,6 +23,7 @@ mod desktop;
 mod snap;
 mod mcp_bridge;
 mod mcp_config;
+mod themes;
 mod capture;
 mod image_assets;
 mod git_ops;
@@ -338,6 +339,9 @@ pub fn run() {
             image_assets::pick_share_package,
             mcp_bridge::mcp_bridge_start,
             mcp_config::mcp_connection_config,
+            themes::theme_catalog,
+            themes::theme_read,
+            themes::theme_open_folder,
             mcp_bridge::mcp_bridge_claim,
             mcp_bridge::mcp_bridge_reply,
             mcp_bridge::mcp_bridge_active,

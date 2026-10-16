@@ -38,6 +38,7 @@ export async function connectDesktop(c: WorkspaceController, label: string) {
   let errorHandler = (message: string): void => { c.error = message; c.accept(c.snapshot()); };
   const request = async (action: Request | null,beforeExecute?:()=>Promise<void>): Promise<{ createdId?: string;createdWindowId?:string;toolResult?:unknown }> => {
     if (main) {
+      if((closing || switching) && action?.kind==='extension-invoke')throw new Error(uiText('extensions.busy'));
       if(action?.kind==='extension-job')return c.execute(action);
       if (action && ((action.kind === 'mcp' && !READ_ONLY_MCP_TOOLS.has(action.tool)) || ['images-import','images-update','share-export','share-import'].includes(action.kind) || action.kind === 'tutorial' || action.kind === 'close-all' || action.kind === 'float' || action.kind === 'move' || action.kind === 'canvas-drop' || action.kind === 'delete' || action.kind === 'prefab-sync' || action.kind === 'undo' || action.kind === 'window')) await prepareWindows();
       if (action === null) await c.flush();
@@ -54,6 +55,7 @@ export async function connectDesktop(c: WorkspaceController, label: string) {
     return mirror!.request(action);
   };
   const unlisteners: (() => void)[] = [];
+  unlisteners.push(await listen('kkb:theme-reload',()=>window.dispatchEvent(new Event('kkb:theme-reload'))));
   if(mirror)unlisteners.push(()=>mirror.dispose());
   const onWindowOperation=(event:Event)=>{void request({kind:'window-state',windowLabel:label,changes:(event as CustomEvent<Record<string,unknown>>).detail}).catch(error=>errorHandler(String(error)));};
   document.addEventListener('kkb:window-operation',onWindowOperation);
@@ -103,10 +105,10 @@ export async function connectDesktop(c: WorkspaceController, label: string) {
   };
 
   const close = async (): Promise<void> => {
-    if(main && c.hasExtensionJobs){errorHandler(uiText('extensions.busy'));return;}
     if (closing) return;
     closing = true;
     try {
+      if(main){await c.refreshExtensionJobs();if(c.hasExtensionJobs)throw new Error(uiText('extensions.busy'));}
       await flushEditor();
       if (main) {
         await prepareWindows();
@@ -208,10 +210,10 @@ export async function connectDesktop(c: WorkspaceController, label: string) {
     await invoke('mcp_bridge_start');
   }
   const switchWorkspace = async (path: string | null,beforeReload?:()=>Promise<void>,beforeSelection?:()=>Promise<void>,mcpContext?:import('../core/collaboration.ts').McpContext): Promise<void> => {
-    if(c.hasExtensionJobs)throw new Error(uiText('extensions.busy'));
     if (!main) throw new Error(uiText("webview/desktop.text003"));
     switching=true;
     try{
+      await c.refreshExtensionJobs();if(c.hasExtensionJobs)throw new Error(uiText('extensions.busy'));
       await prepareWindows(); await c.flush();
       await beforeSelection?.();
       await c.execute(mcpContext?{kind:'mcp',tool:'switch_workspace',args:{path},context:mcpContext}:{kind:'workspace',path},undefined,async()=>{await invoke('select_workspace',{path});return {status:'scheduled',requestedPath:path};});

@@ -1,0 +1,1 @@
+export function validThemeId(value:unknown):value is string{return typeof value==='string' && value.length<=512 && (value==='' || /\.css$/i.test(value) && value.split('/').every(part=>part!=='.'&&part!=='..'&&/^[^\\:*?"<>|\0\r\n]+$/.test(part)));}

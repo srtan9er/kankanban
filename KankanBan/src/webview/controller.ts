@@ -1,16 +1,17 @@
 import {callTool,validateToolCall} from '../mcp/tools.ts';
-import {readCard} from '../core/workspace.ts';
+import {readCard,setField} from '../core/workspace.ts';
 import {validCardImages,type CardImage} from '../core/card-images.ts';
 import {imageRequestSummary,type ImageImportInput} from './image-input.ts';
 import {importSharePackage,type SharePackage} from '../core/share-package.ts';
 import {OperationJournal,compactChange,eventKey,validateActor,type McpContext,type Actor} from '../core/collaboration.ts';
-import {ensureTutorial} from '../core/tutorial.ts';
+import {ensureTutorial,TUTORIAL_EDITION} from '../core/tutorial.ts';
 import {isSkin,type SkinId} from '../core/skins.ts';
+import {validThemeId} from '../core/themes.ts';
 import {isInSubtree} from '../core/indexes.ts';
 import {uiText} from '../i18n/text.ts';
 import {validCanvasBindings,type CanvasDragBindings} from '../core/canvas-drag.ts';
-import {CHILD_MIN_WIDTH, CHILD_MIN_HEIGHT} from '../core/layout-metrics.ts';
 import {rendererOf} from '../core/renderer.ts';
+import {savedChildArea,regionLayout,updatedLayoutSizes,type RegionSize} from '../core/layout-sizes.ts';
 import type { Session } from '../core/workspace.ts';
 import { executeAction, type Action } from '../core/actions.ts';
 import { MAX_CARD_RADIUS, openWindow, closeWindow, writeViewState, windowViewFor, type ViewState } from '../core/view-state.ts';
@@ -24,8 +25,8 @@ import { windowCards } from '../core/windows.ts';
 import type { BufferedFs } from '../platform/buffered-fs-ops.ts';
 import type { AsyncFsOps } from '../platform/async-fs-ops.ts';
 
-export type Request = {kind:"extension-control";id:string;method:"install"|"enable"|"disable"|"uninstall"|"configure";config?:Record<string,unknown>} | {kind:"extension-invoke";id:string;method:string;args:Record<string,unknown>} | {kind:"extension-job";jobId:number} | {kind:"extension-result";id:string;method:string;jobId:number;actor:Actor;result:unknown} | Action | {kind:'images-import';id:string;inputs:ImageImportInput[];offset?:number;beforeContent?:string} | {kind:'share-export';id:string} | {kind:'share-import';parent:string|null} | {kind:'window-state';windowLabel:string;changes:Record<string,unknown>} | {kind:'workspace';path:string|null} | {kind:'mcp';tool:string;args:Record<string,unknown>;context?:McpContext|undefined} | {kind:'signature';name:string} | {kind:'tutorial'} | {kind:'skin';skin:SkinId} | {kind:'interaction';canvasDragBindings:CanvasDragBindings} | { kind: 'appearance'; cardRadius: number } | { kind: 'window'; id: string; open: boolean } | { kind: 'close-all' } | { kind: 'float'; id: string }
-  | { kind: 'view'; id: string; focus?: string; contentHeight?: number; childArea?: { width: number; height: number } };
+export type Request = {kind:'theme';theme:string} | {kind:"extension-control";id:string;method:"install"|"enable"|"disable"|"uninstall"|"configure";config?:Record<string,unknown>} | {kind:"extension-invoke";id:string;method:string;args:Record<string,unknown>} | {kind:"extension-job";jobId:number} | {kind:"extension-result";id:string;method:string;jobId:number;actor:Actor;result:unknown} | Action | {kind:'images-import';id:string;inputs:ImageImportInput[];offset?:number;beforeContent?:string} | {kind:'share-export';id:string} | {kind:'share-import';parent:string|null} | {kind:'window-state';windowLabel:string;changes:Record<string,unknown>} | {kind:'workspace';path:string|null} | {kind:'mcp';tool:string;args:Record<string,unknown>;context?:McpContext|undefined} | {kind:'signature';name:string} | {kind:'tutorial'} | {kind:'skin';skin:SkinId} | {kind:'interaction';canvasDragBindings:CanvasDragBindings} | { kind: 'appearance'; cardRadius: number } | { kind: 'window'; id: string; open: boolean } | { kind: 'close-all' } | { kind: 'float'; id: string }
+  | { kind: 'view'; id: string; cardId?:string; layout?:import('../core/types.ts').Layout; focus?: string; contentHeight?: number; childArea?: { width: number; height: number } };
 export type Snapshot = { cards: [string, Session['state']['cards'] extends Map<string, infer V> ? V : never][];
   children: [string, Session['state']['children'] extends Map<string, infer V> ? V : never][];
   seq: number; view: ViewState; undoCount: number; revision: number };
@@ -42,7 +43,11 @@ export class WorkspaceController {
   async queryExtensionJob(jobId:number):Promise<unknown>{
     if(!Number.isSafeInteger(jobId) || jobId<1)throw new Error(uiText('extensions.invalid'));
     if(!this.extensionTransport)throw new Error(uiText('extensions.noDesktop'));
-    const reply=await this.extensionTransport('job',{jobId});if(reply.state==='done' || reply.state==='failed')void this.completeExtension(jobId,reply);return reply;
+    const reply=await this.extensionTransport('job',{jobId});if(reply.state==='done' || reply.state==='failed')await this.completeExtension(jobId,reply);return reply;
+  }
+  async refreshExtensionJobs():Promise<void>{
+    await this.queue;
+    await Promise.all([...this.extensionJobs.keys()].map(jobId=>this.queryExtensionJob(jobId)));
   }
   async attachExtensions(transport:ExtensionTransport):Promise<void>{
     this.extensionTransport=transport;
@@ -70,6 +75,7 @@ export class WorkspaceController {
   private buffer: BufferedFs;
   private backend: AsyncFsOps;
   journal:OperationJournal;
+  prepareTutorialAssets?:()=>Promise<void>;
   constructor(session: Session, view: ViewState, buffer: BufferedFs, backend: AsyncFsOps) {
     this.session = session; this.view = view; this.buffer = buffer; this.backend = backend;
     this.normalizeWindowFocus();
@@ -126,8 +132,10 @@ export class WorkspaceController {
       const readOnly=request.kind==='mcp' && READ_ONLY_MCP_TOOLS.has(request.tool);
       this.error='';if(!readOnly){this.busy=true;this.status=uiText('webview/controller.text002');this.changed();}
       let result: { createdId?: string; createdWindowId?:string; toolResult?:unknown } = {};
-      const previousLayouts = request.kind === 'layout' || request.kind === 'presentation' || (request.kind==='mcp' && ['set_layout','use_presentation'].includes(request.tool))
+      const previousLayouts = request.kind === 'layout' || request.kind === 'presentation' || request.kind==='prefab-sync' || (request.kind==='mcp' && ['set_layout','use_presentation','sync_prefab'].includes(request.tool))
         ? new Map([...this.session.state.cards.keys()].map(id=>[id,rendererOf(this.session.state,id)])) : null;
+      const legacyAreas=new Map<string,RegionSize>();
+      if(previousLayouts)for(const view of Object.values(this.view.windows))if(view.childArea&&!this.session.state.cards.get(view.focusId)?.layoutSizes&&!legacyAreas.has(view.focusId))legacyAreas.set(view.focusId,view.childArea);
 
       if(request.kind==='extension-control'){
         if(!this.extensionTransport)throw new Error(uiText('extensions.noDesktop'));
@@ -183,10 +191,15 @@ export class WorkspaceController {
       } else if(request.kind==='signature'){
         actor=validateActor({kind:'user',id:'user',name:request.name});this.session.actor=actor;this.view={...this.view,userSignature:actor.name};
       } else if(request.kind==='tutorial'){
-        const id=ensureTutorial(this.session,this.view.tutorialCardId);
+        const existing=this.view.tutorialCardId ? this.session.state.cards.get(this.view.tutorialCardId) : undefined;
+        if(this.view.tutorialEdition!==TUTORIAL_EDITION || !existing || existing.deleted)await this.prepareTutorialAssets?.();
+        const id=ensureTutorial(this.session,this.view.tutorialCardId,this.view.tutorialEdition ?? 0);
         const opened=freshWindow(this.view,id);
-        this.view={...opened.view,tutorialCardId:id,windows:{...opened.view.windows,[opened.windowId]:{...windowViewFor(opened.view,opened.windowId),childArea:{width:240,height:140}}}};
+        this.view={...opened.view,tutorialCardId:id,tutorialEdition:TUTORIAL_EDITION,windows:{...opened.view.windows,[opened.windowId]:{...windowViewFor(opened.view,opened.windowId),childArea:{width:260,height:160}}}};
         result={createdId:id,createdWindowId:opened.windowId};
+      } else if(request.kind==='theme') {
+        if(!validThemeId(request.theme))throw new Error(uiText('themes.invalid'));
+        this.view={...this.view,theme:request.theme};
       } else if(request.kind==='skin') {
         if(!isSkin(request.skin))throw new Error(uiText('webview/controller.invalidSkin'));
         this.view={...this.view,skin:request.skin};
@@ -202,9 +215,22 @@ export class WorkspaceController {
         if (request.childArea && (!Number.isFinite(request.childArea.width) || !Number.isFinite(request.childArea.height) || request.childArea.width < 0 || request.childArea.height < 0)) throw new Error(uiText("webview/controller.text005"));
         const old = this.view.windows[request.id] ?? { focusId: windowAnchor(request.id), bounds: null,
           regions: { breadcrumb: 32, content: 200, children: 240 }, collapsed: { breadcrumb: false, content: false, children: false } };
+        const focus=request.focus ?? old.focusId;
+        if(focus!==old.focusId&&old.childArea){
+          const previous=this.session.state.cards.get(old.focusId);
+          if(previous&&!previous.deleted&&previous.layoutSizes===undefined&&regionLayout(rendererOf(this.session.state,previous.id)))setField(this.session,previous.id,'/layoutSizes',updatedLayoutSizes(undefined,rendererOf(this.session.state,previous.id),old.childArea));
+        }
+        const target=this.session.state.cards.get(request.cardId ?? focus);
+        if(request.childArea&&target&&!target.deleted){
+          const layout=request.layout ?? rendererOf(this.session.state,target.id);
+          if(regionLayout(layout))setField(this.session,target.id,'/layoutSizes',updatedLayoutSizes(target.layoutSizes,layout,request.childArea));
+        }
+        const focused=this.session.state.cards.get(focus);
+        const requestedIsCurrent=request.childArea&&target?.id===focus&&(!request.layout||request.layout===rendererOf(this.session.state,focus));
+        const area=requestedIsCurrent?request.childArea:focused&&(focus!==old.focusId||request.childArea)?savedChildArea(focused,rendererOf(this.session.state,focus)):undefined;
         this.view = { ...this.view, windows: { ...this.view.windows, [request.id]: { ...old,
-          focusId: request.focus ?? old.focusId,
-          ...(request.childArea ? { childArea: request.childArea } : {}),
+          focusId: focus,
+          ...(area ? { childArea: area } : {}),
           regions: { ...old.regions, content: request.contentHeight ?? old.regions.content } } } };
       } else if (request.kind === 'window') {
         this.view = request.open ? openWindow(this.view, request.id) : closeWindow(this.view, request.id);
@@ -224,9 +250,13 @@ export class WorkspaceController {
         const windows = {...this.view.windows};
         for(const [id,before] of previousLayouts) {
           const after = rendererOf(this.session.state,id);
-          if(after === before || (after !== 'plain' && after !== 'ordered' && after !== 'tabs')) continue;
-          windows[id] = {...windowViewFor(this.view,id), childArea: after === 'ordered'
-            ? {width:CHILD_MIN_WIDTH,height:9999} : {width:9999,height:CHILD_MIN_HEIGHT}};
+          if(after === before)continue;
+          const card=this.session.state.cards.get(id)!,legacy=legacyAreas.get(id);
+          if(card.layoutSizes===undefined&&legacy&&regionLayout(before))setField(this.session,id,'/layoutSizes',updatedLayoutSizes(undefined,before,legacy));
+          if(!regionLayout(after))continue;
+          for(const windowId of new Set([id,...Object.keys(windows).filter(key=>windows[key]?.focusId===id)])){
+            windows[windowId]={...windowViewFor(this.view,windowId),childArea:savedChildArea(this.session.state.cards.get(id)!,after)!};
+          }
         }
         this.view = {...this.view,windows};
       }

@@ -8,7 +8,7 @@ import {registerEditor} from './drafts.ts';
 import {Markdown} from './Markdown.tsx';
 import type {CardImage} from '../core/types.ts';
 import './table-object.css';
-export type TableHandle={edit:(key:string,extend?:boolean)=>void;flush:()=>Promise<void>};
+export type TableHandle={edit:(key:string,extend?:boolean)=>void;flush:()=>Promise<void>;finish:()=>Promise<void>};
 type Props={previewData?:TableData|undefined;table:BodyTable;width:number;height:number;index:number;active:boolean;editable:boolean;toolsHost:HTMLElement|null;images:CardImage[];activate:()=>void;finishEditing:()=>void;preview:(size:{width:number;height:number}|null)=>void;save:(data:TableData,expected?:TableData)=>Promise<void>};
 type Point={row:number;col:number};
 type Selection={a:Point;b:Point;axis?:'rows'|'columns'};
@@ -40,7 +40,8 @@ export const TableObject=forwardRef<TableHandle,Props>(function TableObject({pre
   if(!previous)return null;const row=(value:number)=>Math.min(value,table.data.rows.length-1),col=(value:number)=>Math.min(value,table.data.columns.length-1);
   return previous.axis==='rows'?{axis:'rows',a:{row:row(previous.a.row),col:0},b:{row:row(previous.b.row),col:table.data.columns.length-1}}:previous.axis==='columns'?{axis:'columns',a:{row:0,col:col(previous.a.col)},b:{row:table.data.rows.length-1,col:col(previous.b.col)}}:{a:{row:row(previous.a.row),col:col(previous.a.col)},b:{row:row(previous.b.row),col:col(previous.b.col)}};
  });},[table.data]);
- useImperativeHandle(ref,()=>({edit,flush}));
+ const finish=async()=>{stop.current?.();setLocal(null);preview(null);await flush();setSelection(null);};
+ useImperativeHandle(ref,()=>({edit,flush,finish}));
  useEffect(()=>{const handler=(event:Event)=>{if(editable)registerEditor(event,flush());};document.addEventListener('kkb:prepare-close',handler);return()=>{document.removeEventListener('kkb:prepare-close',handler);stop.current?.();};},[]);
  useEffect(()=>{
   if(!editable)return;

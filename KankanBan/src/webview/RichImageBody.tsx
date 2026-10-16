@@ -1,3 +1,4 @@
+import {readTextMetrics,type TextMetrics,type ParagraphMetric} from '../themes/metrics.ts';
 import {EditMode} from './edit-mode.ts';
 import {useContext} from 'react';
 import {passedDragThreshold,swallowDragClick} from './pointer-gesture.ts';
@@ -29,7 +30,7 @@ import './flow-image-drag.css';
 
 type Atom={kind:'text';text:string;start:number}|{kind:'image';index:number};
 type Segment=Omit<InlineText,'kind'|'start'|'end'> & {kind:InlineText['kind']|'task';start?:number;end?:number;sourceMap?:number[];task?:Paragraph['task'];label?:string}|{kind:'image';index:number;text:string};
-type Paragraph={kind:'paragraph';tag:'p'|'h1'|'h2'|'h3'|'blockquote'|'pre';segments:Segment[];size:number;lineHeight:number;prefix?:string;task?:{offset:number;checked:boolean}};
+type Paragraph={kind:'paragraph';tag:'p'|'h1'|'h2'|'h3'|'blockquote'|'pre';segments:Segment[];size:number;lineHeight:number;metric?:ParagraphMetric;prefix?:string;task?:{offset:number;checked:boolean}};
 type Block=Paragraph|{kind:'object';index:number}|{kind:'gap';start:number;end:number}|{kind:'rule';start:number;end:number}|{kind:'table';rows:Segment[][][];alignment:('left'|'right'|'center')[]};
 type ObjectPlacement=ImagePlacement & {data?:TableData};
 type Geometry={layout:ImageLayout;x:number;y:number;width:number;height:number};
@@ -42,7 +43,12 @@ function resizeDimensions(start:Geometry,dx:number,dy:number,proportional:boolea
  return {width:bound(ratio*height),height:bound(height)};
 }
 const floating=(layout:ImageLayout)=>layout==='float' || layout==='overlay' || layout==='underlay';
-const font=(paragraph:Paragraph,segment:Segment,family:string)=>`${segment.kind!=='image' && segment.italic?'italic ':''}${paragraph.tag==='h1' || paragraph.tag==='h2' || paragraph.tag==='h3' || segment.kind!=='image' && segment.strong?'600':'400'} ${paragraph.size*(segment.kind!=='image' && segment.script ? .75 : 1)}px ${paragraph.tag==='pre' || segment.kind==='code'?'Consolas, monospace':family}`;
+const font=(paragraph:Paragraph,segment:Segment,family:string)=>{
+ const code=segment.kind==='code'?paragraph.metric?.code:undefined;
+ return `${segment.kind!=='image' && segment.italic?'italic ':''}${segment.kind!=='image' && segment.strong?(paragraph.metric?.strongWeight ?? '600'):(code?.weight ?? paragraph.metric?.weight ?? (paragraph.tag.startsWith('h')?'600':'400'))} ${(code?.size ?? paragraph.size)*(segment.kind!=='image' && segment.script ? .75 : 1)}px ${code?.family ?? paragraph.metric?.family ?? (paragraph.tag==='pre' || segment.kind==='code'?'Consolas, monospace':family)}`;
+};
+const inlineSpacing=(paragraph:Paragraph,segment:Segment)=>segment.kind==='code'?paragraph.metric?.code.letterSpacing ?? paragraph.metric?.letterSpacing ?? 0:paragraph.metric?.letterSpacing ?? 0;
+const inlineChrome=(paragraph:Paragraph,segment:Segment)=>segment.kind==='code' && paragraph.metric?paragraph.metric.code.left+paragraph.metric.code.right:0;
 function segments(atoms:Atom[]):Segment[]{
  let value='';const offsets:number[]=[],pictures=new Map<number,number>();
  for(const atom of atoms){if(atom.kind==='image'){pictures.set(value.length,atom.index);value+='\uFFFC';offsets.push(-1);}else{for(let i=0;i<atom.text.length;i++)offsets.push(atom.start+i);value+=atom.text;}}
@@ -139,6 +145,7 @@ export function RichImageBody({text,images,id,send:write,prepare,compact=false}:
  const [hovered,setHovered]=useState<ImageHoverPoint|null>(null);
  const preparedCode=useRef(new Map<string,{key:string;prepared:PreparedTextWithSegments}>());
  const [width,setWidth]=useState(320),[family,setFamily]=useState('Inter,"Segoe UI","Microsoft YaHei",sans-serif'),[selected,setSelected]=useState<number|null>(null),[preview,setPreview]=useState<{index:number;placement:ObjectPlacement}|null>(null),[intrinsic,setIntrinsic]=useState<Record<string,{width:number;height:number}>>({}),[captions,setCaptions]=useState<Record<number,number>>({}),[busy,setBusy]=useState(false),[error,setError]=useState('');
+ const [textMetrics,setTextMetrics]=useState<TextMetrics|null>(null);
  const [readOnlyExpanded,setReadOnlyExpanded]=useState<Set<string>>(()=>new Set());
  const foldBusy=useRef(false);
  const parsed=useMemo(()=>parseCardImages(text,images),[text,images]);
@@ -149,7 +156,7 @@ export function RichImageBody({text,images,id,send:write,prepare,compact=false}:
  const tableKey=JSON.stringify([text,width,geometry.map(g=>[g.width,g.height,g.layout])]);
  const stack=imageStack(references.map((reference,index)=>({...reference,layout:geometry[index]!.layout})));
  const currentGeometry=useRef(geometry);currentGeometry.current=geometry;
- const blocks=useMemo(()=>bodyBlocks(text,references,geometry),[text,references,preview?.placement.layout]);
+ const blocks=useMemo(()=>bodyBlocks(text,references,geometry).map(block=>{if(block.kind!=='paragraph')return block;const metric=textMetrics?.paragraphs[block.task?'task':block.prefix?'list':block.tag];return metric?{...block,metric,size:metric.size,lineHeight:metric.lineHeight}:block;}),[text,references,preview?.placement.layout,textMetrics]);
  const free=geometry.flatMap((rect,index)=>rect.layout==='float'?[{...rect,index}]:[]),wrap=free.length>0;
  useLayoutEffect(()=>{
   const root=host.current;if(!root)return;const origin=root.getBoundingClientRect();let width=0,height=0;
@@ -162,8 +169,8 @@ export function RichImageBody({text,images,id,send:write,prepare,compact=false}:
  });
  useLayoutEffect(()=>{
   const element=host.current;if(!element)return;
-  const measure=()=>{if(element.clientWidth>0)setWidth(element.clientWidth);const actualFamily=getComputedStyle(element.parentElement ?? element).fontFamily;if(actualFamily)setFamily(actualFamily);const changes:Record<number,number>={};for(const [index,frame] of frames.current){const g=currentGeometry.current[index];if(g && !floating(g.layout) && frame.offsetHeight>0)changes[index]=Math.max(0,frame.offsetHeight-g.height);}setCaptions(old=>Object.entries(changes).some(([key,value])=>Math.abs((old[Number(key)] ?? -1)-value)>.5)?{...old,...changes}:old);};
-  measure();const observer=new ResizeObserver(measure);observer.observe(element);for(const frame of frames.current.values())observer.observe(frame);return()=>observer.disconnect();
+  const measure=()=>{if(element.clientWidth>0)setWidth(element.clientWidth);const nextMetrics=readTextMetrics(element);setTextMetrics(old=>JSON.stringify(old)===JSON.stringify(nextMetrics)?old:nextMetrics);const actualFamily=getComputedStyle(element).fontFamily;if(actualFamily)setFamily(actualFamily);const changes:Record<number,number>={};for(const [index,frame] of frames.current){const g=currentGeometry.current[index];if(g && !floating(g.layout) && frame.offsetHeight>0)changes[index]=Math.max(0,frame.offsetHeight-g.height);}setCaptions(old=>Object.entries(changes).some(([key,value])=>Math.abs((old[Number(key)] ?? -1)-value)>.5)?{...old,...changes}:old);};
+  measure();document.documentElement.addEventListener('kkb:theme-change',measure);document.fonts?.addEventListener('loadingdone',measure);const observer=new ResizeObserver(measure);observer.observe(element);for(const frame of frames.current.values())observer.observe(frame);return()=>{observer.disconnect();document.documentElement.removeEventListener('kkb:theme-change',measure);document.fonts?.removeEventListener('loadingdone',measure);};
  },[references,preview?.placement.layout]);
  useLayoutEffect(()=>{
   if(!wrap || !host.current)return;const root=host.current;
@@ -182,11 +189,11 @@ export function RichImageBody({text,images,id,send:write,prepare,compact=false}:
   measure();const observer=new ResizeObserver(measure);observer.observe(dock);observer.observe(frame);observer.observe(root);window.addEventListener('scroll',measure,true);window.addEventListener('resize',measure);return()=>{observer.disconnect();window.removeEventListener('scroll',measure,true);window.removeEventListener('resize',measure);};
  });
  useEffect(()=>{setPreview(null);setHovered(null);if(selected!==null && selected>=references.length)setSelected(null);},[text]);
- const consumeClick=(press:PointerEvent,onCapture?:()=>void,observeMove=false)=>{
+ const consumeClick=(press:PointerEvent,onCapture?:()=>void,observeMove=false,releaseButton=press.button)=>{
   clickCleanup.current?.();let moved=false;
   const movement=(event:PointerEvent)=>{if(event.pointerId!==press.pointerId)return;if(Math.max(Math.hypot(event.clientX-press.clientX,event.clientY-press.clientY),Math.hypot(event.screenX-press.screenX,event.screenY-press.screenY))>=6)moved=true;};
   const release=(event:PointerEvent)=>{movement(event);if(moved)cleanup();};
-  const click=(event:MouseEvent)=>{if(event.button!==press.button || event.detail===0)return;if(!moved){event.preventDefault();event.stopImmediatePropagation();onCapture?.();}cleanup();};
+  const click=(event:MouseEvent)=>{if(event.button!==releaseButton || event.detail===0)return;if(!moved){event.preventDefault();event.stopImmediatePropagation();onCapture?.();}cleanup();};
   const nextPress=(event:PointerEvent)=>{if(event!==press)cleanup();};
   const cleanup=()=>{document.removeEventListener('click',click,true);document.removeEventListener('pointerdown',nextPress,true);window.removeEventListener('pointermove',movement,true);window.removeEventListener('pointerup',release,true);window.removeEventListener('pointercancel',cleanup,true);window.removeEventListener('blur',cleanup);if(clickCleanup.current===cleanup)clickCleanup.current=null;};
   document.addEventListener('click',click,true);document.addEventListener('pointerdown',nextPress,true);clickCleanup.current=cleanup;
@@ -206,6 +213,12 @@ export function RichImageBody({text,images,id,send:write,prepare,compact=false}:
  useEffect(()=>{
   if(selected===null)return;
   const outside=(event:PointerEvent)=>{
+   if(event.button===2){
+    event.preventDefault();stopGesture.current?.();gesture.current=null;previewGesture.current=null;setPreview(null);setHovered(null);
+    // The left release from an interrupted gesture cannot select the object again.
+    consumeClick(event,undefined,false,0);
+    const table=tableHandles.current.get(selected);void (table?.finish() ?? Promise.resolve()).then(()=>setSelected(null)).catch(()=>{});return;
+   }
    if(event.button!==0)return;const target=event.target;if(target instanceof Element && target.closest('.image-layout-toolbar,.image-remove,.table-tools,.table-collapse,.table-collapsed-label,.table-axis-select,.table-track-grip,.table-cell-editor,[data-cell-editing=true],.table-size-tool'))return;
    if(gesture.current)return;
    const pane=host.current?.closest<HTMLElement>('.preview,.card-body-region,.document-region') ?? host.current;
@@ -306,7 +319,7 @@ export function RichImageBody({text,images,id,send:write,prepare,compact=false}:
   const reference=references[index]!,rect=geometry[index]!,image=fallbackImage(reference,index),isFree=floating(rect.layout),active=selected===index;
   const position=absolute ?? (isFree?{x:rect.x,y:rect.y}:undefined);
   const style={width:rect.width,...(position?{position:'absolute',left:position.x,top:position.y}:{}),zIndex:stack[index],'--image-height':`${rect.height}px`} as CSSProperties;
-  return <div key={`image-${index}`} ref={element=>{if(element)frames.current.set(index,element);else frames.current.delete(index);}} className={`image-placement ${inline?'image-placement-inline':''}`} data-image-index={index} data-object-name={reference.displayName} data-object-type={reference.table?'table':'image'} data-source-image-start={reference.start} data-source-image-end={reference.end} data-layout={rect.layout} data-selected={active} data-dragging={gesture.current?.index===index && gesture.current.moved} data-drawing-surface={id && send?'image-layout':undefined} role={id && send?(reference.table?'group':'button'):undefined} tabIndex={id && send?0:undefined} aria-label={id && send?uiText(reference.table?'tables.editLayout':'images.editLayout'):undefined} style={style} onPointerDown={event=>{if(id && send){if(reference.table?.collapsed)return;if(reference.table && (event.target as Element).closest('[data-cell-editing=true]'))return;event.preventDefault();event.stopPropagation();if(event.button===0 && !busy){consumeClick(event.nativeEvent,()=>{const cell=(event.target as Element).closest<HTMLElement>('[data-table-cell]');if(cell && reference.table)tableHandles.current.get(index)?.edit(cell.dataset.tableCell!,event.shiftKey);},!!reference.table);move(event.nativeEvent,index,false,selected!==index);}}}} onClick={event=>{event.stopPropagation();if(id && send && !busy)setSelected(index);}} onKeyDown={event=>{if(event.target===event.currentTarget && (event.key==='Enter' || event.key===' ') && id && send){event.preventDefault();event.stopPropagation();setSelected(index);}}}>
+  return <div key={`image-${index}`} ref={element=>{if(element)frames.current.set(index,element);else frames.current.delete(index);}} contentEditable={false} className={`image-placement ${inline?'image-placement-inline':''}`} data-image-index={index} data-object-name={reference.displayName} data-object-type={reference.table?'table':'image'} data-source-image-start={reference.start} data-source-image-end={reference.end} data-layout={rect.layout} data-selected={active} data-dragging={gesture.current?.index===index && gesture.current.moved} data-drawing-surface={id && send?'image-layout':undefined} role={id && send?(reference.table?'group':'button'):undefined} tabIndex={id && send?0:undefined} aria-label={id && send?uiText(reference.table?'tables.editLayout':'images.editLayout'):undefined} style={style} onPointerDown={event=>{if(id && send){if(reference.table?.collapsed)return;if(reference.table && (event.target as Element).closest('[data-cell-editing=true]'))return;event.preventDefault();event.stopPropagation();if(event.button===0 && !busy){consumeClick(event.nativeEvent,()=>{const cell=(event.target as Element).closest<HTMLElement>('[data-table-cell]');if(cell && reference.table)tableHandles.current.get(index)?.edit(cell.dataset.tableCell!,event.shiftKey);},!!reference.table);move(event.nativeEvent,index,false,selected!==index);}}}} onClick={event=>{event.stopPropagation();if(id && send && !busy)setSelected(index);}} onKeyDown={event=>{if(event.target===event.currentTarget && (event.key==='Enter' || event.key===' ') && id && send){event.preventDefault();event.stopPropagation();setSelected(index);}}}>
    {reference.table?.collapsed?<button className="table-collapsed-label" disabled={busy} aria-label={uiText('tables.expand',{arg0:reference.table.name})} title={uiText('tables.expand',{arg0:reference.table.name})} onPointerDown={event=>{event.preventDefault();event.stopPropagation();}} onClick={event=>{event.stopPropagation();void toggleTable(index,false);}}>{uiText('images.editorToken',{arg0:reference.table.name})}</button>:reference.table?<TableObject previewData={preview?.index===index?preview.placement.data:undefined} ref={handle=>{if(handle)tableHandles.current.set(index,handle);else tableHandles.current.delete(index);}} table={reference.table} width={rect.width} height={rect.height} index={index} active={active} toolsHost={active?tableDock:null} editable={!!id && !!send} images={images} activate={()=>setSelected(index)} finishEditing={()=>setSelected(null)} preview={size=>setPreview(size?{index,placement:{layout:rect.layout,...size}}:null)} save={(data,expected)=>saveTable(index,data,expected)}/>:<ImageGallery images={[image]} onIntrinsic={size=>setIntrinsic(old=>old[reference.assetId]?.width===size.width && old[reference.assetId]?.height===size.height?old:{...old,[reference.assetId]:size})}/>}
   </div>;
  };
@@ -317,7 +330,7 @@ export function RichImageBody({text,images,id,send:write,prepare,compact=false}:
   taskSaving.current=true;setBusy(true);setError('');
   void (async()=>{try{await prepare?.();await send({kind:'edit',id,field:'content',before,value:before.slice(0,task.offset)+(task.checked?' ':'x')+before.slice(task.offset+1)});}catch(error){setError(String(error));}finally{taskSaving.current=false;setBusy(false);}})();
  }}/>;
- const renderSegment=(segment:Segment,index:number,textOverride?:string,map?:number[]):ReactNode=>{
+ const renderSegment=(segment:Segment,index:number,textOverride?:string,map?:number[],metric?:ParagraphMetric):ReactNode=>{
   if(segment.kind==='image')return gallery(segment.index,undefined,true);
   if(segment.kind==='task')return <span key={index} className="rich-image-text">{taskCheck(segment.task!,segment.label ?? '')}</span>;
   const value=textOverride ?? segment.text,offsets=map && segment.sourceMap?map.map(offset=>segment.sourceMap![offset-segment.start!] ?? segment.end!):map ?? segment.sourceMap;
@@ -325,11 +338,11 @@ export function RichImageBody({text,images,id,send:write,prepare,compact=false}:
   let node:ReactNode=value;
   if(segment.strong)node=<strong>{node}</strong>;if(segment.italic)node=<em>{node}</em>;if(segment.deleted)node=<del>{node}</del>;
   if(segment.script==='sup')node=<sup>{node}</sup>;if(segment.script==='sub')node=<sub>{node}</sub>;
-  if(segment.kind==='code')node=<code>{node}</code>;
+  if(segment.kind==='code')node=<code style={metric?{fontFamily:metric.code.family,fontSize:metric.code.size,fontWeight:metric.code.weight,letterSpacing:metric.code.letterSpacing}:undefined}>{node}</code>;
   if(segment.kind==='link')node=<a href={segment.href} onPointerDown={event=>event.stopPropagation()} onClick={event=>{event.preventDefault();event.stopPropagation();void openLink(segment.href!);}}>{node}</a>;
   return <span key={index} {...source}>{node}</span>;
  };
- const insetX=compact?0:16,insetY=compact?0:12,textWidth=Math.max(1,width-insetX*2),textFree=free.map(rect=>({...rect,x:rect.x-insetX}));
+ const insetX=compact?0:(textMetrics?.insetX ?? 16),insetY=compact?0:(textMetrics?.insetY ?? 12),insetBottom=compact?0:(textMetrics?.insetBottom ?? 12),textWidth=Math.max(1,width-insetX*2);
  let flowHeight=insetY;
  const rendered:ReactNode[]=blocks.map((block,index)=>{
   if(block.kind==='object'){const rect=geometry[block.index]!,top=flowHeight;if(wrap)flowHeight+=rect.height+4;return <div key={index} className="table-flow-block" style={wrap?{position:'absolute',left:0,top,width:rect.width,height:rect.height}:{width:rect.width}}>{gallery(block.index)}</div>;}
@@ -339,38 +352,40 @@ export function RichImageBody({text,images,id,send:write,prepare,compact=false}:
   }
   if(block.kind==='table'){
    // A table owns a full-width band. Keep it below intersecting free pictures.
-   const cellWidth=Math.max(1,width/block.alignment.length-16),paragraph:Paragraph={kind:'paragraph',tag:'p',segments:[],size:13,lineHeight:20.8};
+   const cellWidth=Math.max(1,width/block.alignment.length-16),metric=textMetrics?.paragraphs.p,paragraph:Paragraph={kind:'paragraph',tag:'p',segments:[],size:metric?.size ?? 13,lineHeight:metric?.lineHeight ?? 20.8,...(metric?{metric}:{})};
    const heights=wrap?block.rows.map((row,r)=>Math.max(32,...row.map((cell,c)=>{
-    const items=cell.map(segment=>({text:segment.text,font:font(paragraph,segment,family),...(segment.kind==='image'?{break:'never' as const,extraWidth:geometry[segment.index]!.width}: {})}));
+    const items=cell.map(segment=>({text:segment.text,font:font(paragraph,segment,family),letterSpacing:inlineSpacing(paragraph,segment),extraWidth:inlineChrome(paragraph,segment),...(segment.kind==='image'?{break:'never' as const,extraWidth:geometry[segment.index]!.width}: {})}));
     const slot=`table:${index}:${r}:${c}`,key=JSON.stringify(items);let cached=preparedCache.current.get(slot);if(cached?.key!==key){cached={key,prepared:prepareRichInline(items)};preparedCache.current.set(slot,cached);}
-    const result=flowImageText(cached.prepared,cellWidth,0,20.8,[],cell.map(segment=>segment.kind==='image'?geometry[segment.index]!.height:20.8));return result.height+12;
+    const result=flowImageText(cached.prepared,cellWidth,0,paragraph.lineHeight,[],cell.map(segment=>segment.kind==='image'?geometry[segment.index]!.height:paragraph.lineHeight));return result.height+12;
    }))):[];
    const height=(tableSizes.key===tableKey?tableSizes.heights[index]:undefined) ?? heights.reduce((sum,h)=>sum+h,0)+2;
    let top=flowHeight;if(wrap){let hit;while((hit=free.find(rect=>rect.x<width && rect.x+rect.width>0 && rect.y<top+height && rect.y+rect.height+8>top)))top=hit.y+hit.height+8;flowHeight=top+height+4;}
-   const row=(cells:Segment[][],r:number)=> <tr key={r}>{cells.map((cell,c)=>{const Tag=r===0?'th':'td';return <Tag key={c} style={{textAlign:block.alignment[c]}}>{cell.map((segment,i)=>renderSegment(segment,i))}</Tag>;})}</tr>;
+   const row=(cells:Segment[][],r:number)=> <tr key={r}>{cells.map((cell,c)=>{const Tag=r===0?'th':'td';return <Tag key={c} style={{textAlign:block.alignment[c]}}>{cell.map((segment,i)=>renderSegment(segment,i,undefined,undefined,metric))}</Tag>;})}</tr>;
    return <table key={index} data-table-block={index} className="markdown-table" style={wrap?{position:'absolute',left:0,top,width,margin:0}:undefined}><thead>{row(block.rows[0]!,0)}</thead><tbody>{block.rows.slice(1).map((cells,r)=>row(cells,r+1))}</tbody></table>;
   }
 
-  if(!wrap){if(block.kind==='gap')return <div className="paragraph-gap" data-source-start={block.start} data-source-end={block.end} key={index}/>;const Tag=block.tag==='p' && references.length?'div':block.tag;return <Tag className={`rich-text-paragraph ${!block.segments.some(segment=>segment.kind==='image')?'rich-text-inset':''} ${block.task?'md-task':block.prefix?'md-list':''}`} key={index} style={{fontSize:block.size,lineHeight:`${block.lineHeight}px`}}>{block.task && taskCheck(block.task,block.segments.map(segment=>segment.text).join(''))}{block.prefix && <span>{block.prefix} </span>}{block.segments.map((s,i)=>renderSegment(s,i))}</Tag>;}
-  if(block.kind==='gap'){const y=flowHeight;flowHeight+=10;return <span key={index} data-source-start={block.start} data-source-end={block.end} style={{position:'absolute',left:0,top:y,height:10,width:1}}/>;}
+  if(!wrap){if(block.kind==='gap')return <div className="paragraph-gap" data-source-start={block.start} data-source-end={block.end} key={index}/>;const Tag=block.tag==='p' && references.length?'div':block.tag;return <Tag className={`rich-text-paragraph ${!block.segments.some(segment=>segment.kind==='image')?'rich-text-inset':''} ${block.task?'md-task':block.prefix?'md-list':''}`} data-md-kind={block.tag} key={index} style={{fontFamily:block.metric?.family,fontSize:block.size,letterSpacing:block.metric?.letterSpacing,lineHeight:`${block.lineHeight}px`}}>{block.task && taskCheck(block.task,block.segments.map(segment=>segment.text).join(''))}{block.prefix && <span>{block.prefix} </span>}{block.segments.map((s,i)=>renderSegment(s,i,undefined,undefined,block.metric))}</Tag>;}
+  if(block.kind==='gap'){const y=flowHeight;flowHeight+=textMetrics?.gap ?? 10;return <span key={index} data-source-start={block.start} data-source-end={block.end} style={{position:'absolute',left:0,top:y,height:textMetrics?.gap ?? 10,width:1}}/>;}
+  flowHeight+=block.metric?.before ?? 0;
+  const contentLeft=insetX+(block.metric?.left ?? 0),contentWidth=Math.max(1,textWidth-(block.metric?.left ?? 0)-(block.metric?.right ?? 0)),contentFree=free.map(rect=>({...rect,x:rect.x-contentLeft}));
   if(block.tag==='pre'){
    const start=flowHeight,lines:{line:ImageTextLine;maps:number[][]}[]=[],f=font(block,block.segments[0]!,family);let sourceOffset=block.segments[0]?.kind==='image'?0:block.segments[0]?.start ?? 0;
-   block.segments.map(s=>s.text).join('').split('\n').forEach((source,lineIndex)=>{const key=JSON.stringify([source,f]),slot=`${index}:${lineIndex}`;let cached=preparedCode.current.get(slot);if(cached?.key!==key){cached={key,prepared:prepareWithSegments(source,f,{whiteSpace:'pre-wrap'})};preparedCode.current.set(slot,cached);}const result=routeCodeLine(cached.prepared,textWidth,flowHeight,block.lineHeight,textFree);let from=0;for(const line of result.lines){const maps=line.fragments.map(fragment=>{const mapped=fragmentSourceMap(source,fragment.text,sourceOffset,from);from=mapped.next;return mapped.offsets;});lines.push({line,maps});}sourceOffset+=source.length+1;flowHeight=result.height;});
-   const end=flowHeight;flowHeight+=4;
-   return <pre className="rich-flow-paragraph rich-code-flow" key={index} style={{position:'absolute',left:0,top:start,width,height:end-start,fontSize:block.size,lineHeight:`${block.lineHeight}px`}}>{lines.map(({line,maps},i)=><span className="rich-flow-line" key={i} style={{left:line.x+insetX,top:line.y-start,width:line.width,height:line.height,lineHeight:`${line.height}px`}}>{line.fragments.map((fragment,j)=><span key={j} data-source-start={maps[j]![0]} data-source-end={maps[j]!.at(-1)} data-source-map={JSON.stringify(maps[j])}>{fragment.text}</span>)}</span>)}</pre>;
+   block.segments.map(s=>s.text).join('').split('\n').forEach((source,lineIndex)=>{const key=JSON.stringify([source,f]),slot=`${index}:${lineIndex}`;let cached=preparedCode.current.get(slot);if(cached?.key!==key){cached={key,prepared:prepareWithSegments(source,f,{whiteSpace:'pre-wrap',letterSpacing:block.metric?.letterSpacing ?? 0})};preparedCode.current.set(slot,cached);}const result=routeCodeLine(cached.prepared,contentWidth,flowHeight,block.lineHeight,contentFree);let from=0;for(const line of result.lines){const maps=line.fragments.map(fragment=>{const mapped=fragmentSourceMap(source,fragment.text,sourceOffset,from);from=mapped.next;return mapped.offsets;});lines.push({line,maps});}sourceOffset+=source.length+1;flowHeight=result.height;});
+   const end=flowHeight;flowHeight+=block.metric?.after ?? 4;
+   return <pre className="rich-flow-paragraph rich-code-flow" data-md-kind={block.tag} key={index} style={{position:'absolute',left:0,top:start,width,height:end-start,fontFamily:block.metric?.family,fontWeight:block.metric?.weight,fontSize:block.size,letterSpacing:block.metric?.letterSpacing,lineHeight:`${block.lineHeight}px`}}>{lines.map(({line,maps},i)=><span className="rich-flow-line" key={i} style={{left:line.x+contentLeft,top:line.y-start,width:line.width,height:line.height,lineHeight:`${line.height}px`}}>{line.fragments.map((fragment,j)=><span key={j} data-source-start={maps[j]![0]} data-source-end={maps[j]!.at(-1)} data-source-map={JSON.stringify(maps[j])}>{fragment.text}</span>)}</span>)}</pre>;
   }
   const textSegments=block.task?[{kind:'task',text:'\uFFFC',task:block.task,label:block.segments.map(segment=>segment.text).join('')} as Segment,...block.segments]:block.prefix?[{kind:'text',text:block.prefix+' '} as Segment,...block.segments]:block.segments;
   const items:RichInlineItem[]=textSegments.map(segment=>{
-   const f=font(block,segment,family);if(segment.kind==='task')return {text:'\uFFFC',font:f,break:'never',extraWidth:20-measureNaturalWidth(prepareWithSegments('\uFFFC',f))};if(segment.kind!=='image')return {text:segment.text,font:f};
+   const f=font(block,segment,family);if(segment.kind==='task')return {text:'\uFFFC',font:f,break:'never',extraWidth:(textMetrics?.taskWidth ?? 20)-measureNaturalWidth(prepareWithSegments('\uFFFC',f))};if(segment.kind!=='image')return {text:segment.text,font:f,letterSpacing:inlineSpacing(block,segment),extraWidth:inlineChrome(block,segment)};
    const glyph=measureNaturalWidth(prepareWithSegments('\uFFFC',f));return {text:'\uFFFC',font:f,break:'never',extraWidth:geometry[segment.index]!.width+8-glyph};
   });
   const key=JSON.stringify(items);let cached=preparedCache.current.get(index);if(cached?.key!==key){cached={key,prepared:prepareRichInline(items)};preparedCache.current.set(index,cached);}
-  const result=flowImageText(cached.prepared,textWidth,flowHeight,block.lineHeight,textFree as ImageExclusion[],textSegments.map(segment=>segment.kind==='image'?geometry[segment.index]!.height+(captions[segment.index] ?? 0):block.lineHeight)),start=flowHeight;flowHeight=result.height+4;
+  const result=flowImageText(cached.prepared,contentWidth,flowHeight,block.lineHeight,contentFree as ImageExclusion[],textSegments.map(segment=>segment.kind==='image'?geometry[segment.index]!.height+(captions[segment.index] ?? 0):block.lineHeight)),start=flowHeight;flowHeight=result.height+(block.metric?.after ?? 4);
   const sourceCursors=new Map<number,number>();
   const Tag=block.tag==='p'?'div':block.tag;
-  return <Tag className="rich-flow-paragraph" key={index} style={{position:'absolute',left:0,top:start,width,height:result.height-start,fontSize:block.size,lineHeight:`${block.lineHeight}px`}}>{result.lines.map((line:ImageTextLine,lineIndex)=><span className="rich-flow-line" key={lineIndex} style={{left:line.x+insetX,top:line.y-start,width:line.width,height:line.height,lineHeight:`${line.height}px`}}>{line.fragments.map((fragment,i)=>{const segment=textSegments[fragment.itemIndex]!;let map:number[]|undefined;if(segment.kind!=='image' && segment.start!==undefined){const mapped=fragmentSourceMap(segment.text,fragment.text,segment.start,sourceCursors.get(fragment.itemIndex) ?? 0);sourceCursors.set(fragment.itemIndex,mapped.next);map=mapped.offsets;}return <span key={i} style={{marginLeft:fragment.gapBefore}}>{renderSegment(segment,i,fragment.text,map)}</span>;})}</span>)}</Tag>;
+  return <Tag className={`rich-flow-paragraph ${block.task?'md-task':block.prefix?'md-list':''}`} data-md-kind={block.tag} key={index} style={{position:'absolute',left:0,top:start,width,height:result.height-start,fontFamily:block.metric?.family,fontWeight:block.metric?.weight,fontSize:block.size,letterSpacing:block.metric?.letterSpacing,lineHeight:`${block.lineHeight}px`}}>{result.lines.map((line:ImageTextLine,lineIndex)=><span className="rich-flow-line" key={lineIndex} style={{left:line.x+contentLeft,top:line.y-start,width:line.width,height:line.height,lineHeight:`${line.height}px`}}>{line.fragments.map((fragment,i)=>{const segment=textSegments[fragment.itemIndex]!;let map:number[]|undefined;if(segment.kind!=='image' && segment.start!==undefined){const mapped=fragmentSourceMap(segment.text,fragment.text,segment.start,sourceCursors.get(fragment.itemIndex) ?? 0);sourceCursors.set(fragment.itemIndex,mapped.next);map=mapped.offsets;}return <span key={i} style={{marginLeft:fragment.gapBefore}}>{renderSegment(segment,i,fragment.text,map,block.metric)}</span>;})}</span>)}</Tag>;
  });
- const extent=Math.max(wrap?flowHeight+insetY:0,...geometry.filter(g=>floating(g.layout)).map(g=>g.y+g.height+4));
+ const extent=Math.max(wrap?flowHeight+insetBottom:0,...geometry.filter(g=>floating(g.layout)).map(g=>g.y+g.height+4));
  const hover=(event:{target:EventTarget;clientX:number;clientY:number})=>{
   if(gesture.current){setHovered(null);return;}
   if(event.target instanceof Element && event.target.closest('button,.image-resize-grip')){setHovered(null);return;}
@@ -378,7 +393,7 @@ export function RichImageBody({text,images,id,send:write,prepare,compact=false}:
   if(next===null)for(const [index,frame] of [...frames.current].reverse()){if(geometry[index]?.layout!=='underlay')continue;const rect=frame.getBoundingClientRect();if(event.clientX>=rect.left && event.clientX<=rect.right && event.clientY>=rect.top && event.clientY<=rect.bottom){next=index;break;}}
   setHovered(current=>next===null?null:current?.index===next?current:{index:next,x:event.clientX,y:event.clientY,name:names[next]!});
  };
- return <><div ref={host} className={`${references.length?'markdown-with-images':'markdown'} rich-image-body ${wrap?'has-free-images':''}`} title={hovered?'':undefined} style={{minHeight:Math.max(extent,objectBoundary.height) || undefined,fontFamily:family}} onPointerEnter={hover} onPointerMove={hover} onPointerLeave={()=>setHovered(null)}>
+ return <><div ref={host} className={`kkb-markdown ${references.length?'markdown-with-images':'markdown'} rich-image-body ${wrap?'has-free-images':''}`} title={hovered?'':undefined} style={{minHeight:Math.max(extent,objectBoundary.height) || undefined,}} onPointerEnter={hover} onPointerMove={hover} onPointerLeave={()=>setHovered(null)}>
   <div ref={fallbackDock} className="table-floating-dock" data-floating-object-tools="true"/>
   {references.length>0 && <div data-body-object-boundary="true" aria-hidden="true" style={{position:'absolute',left:0,top:0,width:objectBoundary.width,height:objectBoundary.height,pointerEvents:'none'}}/>}
   <div className="rich-image-flow">{rendered}</div>

@@ -1,4 +1,4 @@
-# 扩展接入（接口 v1）
+# 扩展接入（接口 v2）
 
 扩展入口位于卡片管理器的「扩展」标签。双击入口每次创建新窗口；入口不是树上的卡片节点，不参与预制体或树关系移动。所有窗口共享当前工作区的服务配置、任务和执行结果，各自保留窗口位置、大小及浏览位置。关闭窗口不停止服务，也不等于卸载。
 
@@ -9,6 +9,7 @@
 | 文件 | 职责 |
 | --- | --- |
 | `registry.ts` | 清单、接口版本、统一生命周期、状态与事件订阅 |
+| `git/tutorial.ts` | Git 自带的教学卡片结构；正文仍从多语言表读取 |
 | `desktop-service.ts` | 所有桌面服务共用的请求与任务适配器 |
 | `../webview/ExtensionManager.tsx` | 安装状态、启停、配置、卸载入口 |
 | `../webview/ExtensionWindow.tsx` | 复用普通卡片的无边框窗口外壳 |
@@ -19,10 +20,26 @@
 ## 新增内置扩展
 
 1. 在 `../i18n/zh-CN.json` 添加名称、介绍、按钮、错误等文本。所有程序文案遵守该目录的 README。
-2. 用 `ExtensionManifest` 声明稳定 ID、实现版本、`apiVersion: EXTENSION_API_VERSION`、名称键、介绍键及能力标识，并加入 `AVAILABLE_EXTENSIONS`。
+2. 用 `ExtensionManifest` 声明稳定 ID、实现版本、`apiVersion: EXTENSION_API_VERSION`、名称键、介绍键、能力标识及必需的 `tutorial`，并加入 `AVAILABLE_EXTENSIONS`。
 3. 服务实现 `ExtensionService` 的全部方法。应用通过 `ExtensionHost` 调用，不在管理器里为服务新增专用启停流程。原生服务复用 `DesktopExtensionService`；在 Rust `provider` 登记执行器和配置校验，不把业务判断写进通用任务调度。
 4. 实现接受 `ExtensionViewProps` 的 React 组件，在 `extension-views.tsx` 登记。组件通过 `send` 请求主窗口执行，不能绕过唯一写入者修改卡片存档。
 5. 添加另一服务的生命周期测试，以及功能的失败路径、配置持久化和多窗口测试。`test/extensions.test.ts` 中的 `sample` 服务是最小可运行接口示例。
+
+## 扩展自带教学
+
+接口 v2 要求每个扩展提供 `tutorial: {root, cards}`。`root` 指向教学入口，入口必须为 `role:'level'`、`parent:null`；其余节点使用本包内的父键，角色为 `step` 或 `practice`。注册会拒绝缺失的教学、重复键、循环、孤立节点及缺失的文本键。
+
+```ts
+import type {ExtensionTutorial} from '../core/tutorial-schema.ts';
+const tutorial:ExtensionTutorial={root:'start',cards:[
+ {key:'start',parent:null,role:'level',title:'tutorial.gitTitle',content:'tutorial.gitBody'},
+ {key:'first',parent:'start',role:'step',title:'tutorial.git_01Title',content:'tutorial.git_01Body'}
+]};
+```
+
+示例借用现有文本键以便核对结构；实际扩展应在文本表中维护自己的内容。教学按完整使用任务组织，相关操作可合在一页；并列内容用目录，只有真实的先后依赖才使用“下一步”链。练习尽量在说明所在卡片完成，需要外部对象时直接提供就近入口。不要把每个小操作拆成独立页面，也不要把同一模块的基础与进阶拆到不同面。
+
+总教程把每份教学的入口挂到 D 面，并为所有键加上 `extension:<扩展ID>:` 命名空间。扩展无须访问教程存档或自己建立管理入口。当前教学随应用编译；已有学习副本是用户数据，不会因为停用或卸载服务而被删除。参考 `git/tutorial.ts`。
 
 最小服务实现示意（机器标识与用户文案分开）：
 
@@ -53,6 +70,8 @@ export function sampleService(): ExtensionService {
 - `invoke` 仅允许已启用服务。桌面执行器返回 `{jobId}`，实际工作在 Rust 后台线程运行，不占用卡片保存队列。同一服务的请求按接收顺序排队（最多 32 项），避免多个窗口的自动查询互相拒绝；运行计时不包含排队时间。
 - `extension-job` 查询 `{state: 'queued' | 'running' | 'done' | 'failed', result?, error?}`，不触发保存、协作记录或完整卡片快照。
 - `kkb:extension-result` 只广播工作区、任务 ID、服务 ID、方法和完成状态。大块差异、图片等结果留在有界任务缓存中，按任务 ID 获取。缓存最多保留约 64 个任务／32 MiB，完成任务可被淘汰。
+- 对外路径统一使用 `desktop::display_path`，移除 Windows 的 `\\?\` 前缀并正确转换 UNC 路径；原生文件访问和安全校验仍使用规范化的 `PathBuf`。完成通知必须与 `workspace_root` 使用同一种路径格式，否则界面会误丢弃通知。
+- 关闭主窗口或切换工作区前按需查询已登记任务，恢复遗漏的完成通知；完成和失败均清理运行标记并只记录一次结果。仍在执行或无法确认状态时保留保护，不增加空闲轮询。
 - `subscribe` 接收状态与结果事件。需要长期保存的交付结果应使用明确的核心保存接口，不能依赖临时任务缓存。
 - `disable` 关闭该扩展的窗口并保留配置；`uninstall` 释放服务和入口，保留用户项目及卡片数据。内置扩展可重新安装。
 - 主窗口退出或切换工作区时，尚有任务则暂时拒绝，避免丢失正在执行的操作归属与结果。

@@ -3,6 +3,7 @@ import {getCurrentWebview} from '@tauri-apps/api/webview';
 import {isTauri} from './tauri-backend.ts';
 import {imageFileInputs,type ImageImportInput} from './image-input.ts';
 import {getMarkdownEditorSelection} from './markdown-editor-model.ts';
+import {getVisualEditorSelection} from './VisualBodyEditor.tsx';
 /** Native file drops and browser clipboard images converge on the main writer. */
 export type ImageInsertion={beforeContent:string;offset:number};
 export function useImageInput(enabled:boolean,accept:(inputs:ImageImportInput[],position?:ImageInsertion)=>Promise<void>,report:(error:string)=>void) {
@@ -13,7 +14,7 @@ export function useImageInput(enabled:boolean,accept:(inputs:ImageImportInput[],
   const paste=(event:ClipboardEvent)=>{
    if(!latest.current.enabled)return;
    const images=[...(event.clipboardData?.items ?? [])].filter(item=>item.kind==='file' && item.type.startsWith('image/')).map(item=>item.getAsFile()).filter((file):file is File=>!!file);
-   if(images.length){event.preventDefault();event.stopPropagation();const target=event.target as HTMLElement|null,editor=target?.closest<HTMLElement>('[data-markdown-editor]');const position=editor?getMarkdownEditorSelection(editor):target?.tagName==='TEXTAREA'?{beforeContent:(target as HTMLTextAreaElement).value,offset:(target as HTMLTextAreaElement).selectionStart}:undefined;void files(images,position);}
+   if(images.length){event.preventDefault();event.stopPropagation();const target=event.target as HTMLElement|null,editor=target?.closest<HTMLElement>('[data-markdown-editor]'),range=editor?(editor.hasAttribute('data-visual-editor')?getVisualEditorSelection(editor):getMarkdownEditorSelection(editor)):undefined;const position=range?{beforeContent:range.beforeContent,offset:range.offset}:target?.tagName==='TEXTAREA'?{beforeContent:(target as HTMLTextAreaElement).value,offset:(target as HTMLTextAreaElement).selectionStart}:undefined;void files(images,position);}
   };
   const drop=(event:DragEvent)=>{
    if(!latest.current.enabled || isTauri() || !event.dataTransfer?.files.length)return;

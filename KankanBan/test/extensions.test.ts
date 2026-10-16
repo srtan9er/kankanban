@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {ExtensionHost,GIT_EXTENSION,type ExtensionService} from '../src/extensions/registry.ts';
+import {ExtensionHost,GIT_EXTENSION,EXTENSION_API_VERSION,type ExtensionService,type ExtensionManifest} from '../src/extensions/registry.ts';
 import {graphRows} from '../src/extensions/git-graph.ts';
 import {createBufferedFs} from '../src/platform/buffered-fs-ops.ts';
 import {createMemoryFs} from '../src/platform/memory-fs-ops.ts';
@@ -9,6 +9,24 @@ import {openSession} from '../src/core/workspace.ts';
 import {emptyViewState,readViewState} from '../src/core/view-state.ts';
 import {WorkspaceController} from '../src/webview/controller.ts';
 const stub=():ExtensionService=>({initialize:async()=>{},enable:async()=>{},disable:async()=>{},dispose:async()=>{},configure:async()=>{},invoke:async(method,args)=>({method,args}),status:()=>({})});
+test('every extension must bring a connected tutorial before it can register',()=>{
+ const host=new ExtensionHost();assert.throws(()=>host.register({...GIT_EXTENSION,tutorial:undefined} as unknown as ExtensionManifest,stub()));
+});
+test('an explicit lifecycle check recovers a missed completion without repeating its journal entry',async()=>{
+ const buffer=createBufferedFs(),c=new WorkspaceController(openSession('/missed',{ops:buffer.ops}),emptyViewState(),buffer,toAsync(createMemoryFs().ops));let state='running',queries=0;
+ await c.attachExtensions(async(channel)=>{if(channel==='start')return {jobId:1};if(channel==='job'){queries++;return {state,id:'git',method:'fetch'};}return {};});
+ await c.execute({kind:'extension-invoke',id:'git',method:'fetch',args:{}});
+ await c.refreshExtensionJobs();assert.equal(c.hasExtensionJobs,true);
+ state='done';await c.refreshExtensionJobs();await c.flush();assert.equal(c.hasExtensionJobs,false);
+ await c.refreshExtensionJobs();await c.completeExtension(1,{state:'done'});await c.flush();assert.equal(queries,2);assert.equal(c.journal.operations.filter(o=>o.operation==='extension-result').length,1);
+});
+test('lifecycle checks clear failed jobs but never forget jobs whose status cannot be read',async()=>{
+ const buffer=createBufferedFs(),c=new WorkspaceController(openSession('/failed',{ops:buffer.ops}),emptyViewState(),buffer,toAsync(createMemoryFs().ops));let readable=false;
+ await c.attachExtensions(async(channel)=>{if(channel==='start')return {jobId:1};if(channel==='job'){if(!readable)throw new Error('transport unavailable');return {state:'failed',error:'operation failed'};}return {};});
+ await c.execute({kind:'extension-invoke',id:'git',method:'fetch',args:{}});
+ await assert.rejects(c.refreshExtensionJobs(),/transport unavailable/);assert.equal(c.hasExtensionJobs,true);
+ readable=true;await c.refreshExtensionJobs();assert.equal(c.hasExtensionJobs,false);assert.equal(c.journal.operations.filter(o=>o.operation==='extension-result').length,1);
+});
 test('job polling does not save or broadcast snapshots while a job is running',async()=>{
  const buffer=createBufferedFs(),c=new WorkspaceController(openSession('/poll',{ops:buffer.ops}),emptyViewState(),buffer,toAsync(createMemoryFs().ops));await c.attachExtensions(async(channel)=>channel==='job'?{state:'running'}:{});
  const revision=c.getRevision(),operations=c.journal.operations.length;let flushed=0;buffer.flushTo=async()=>{flushed++;};
@@ -27,7 +45,7 @@ test('completion arriving before the start response cannot leave an orphan runni
 });
 test('a second provider uses exactly the same registration, lifecycle, invocation and event interface',async()=>{
  const host=new ExtensionHost();host.register(GIT_EXTENSION,stub());host.register({...GIT_EXTENSION,id:'sample'},stub());const events:unknown[]=[];host.subscribe(e=>events.push(e));
- await assert.rejects(host.invoke('sample','read'),/启用/);await host.initialize('sample',{});await host.enable('sample');assert.deepEqual(await host.invoke('sample','read',{a:1}),{method:'read',args:{a:1}});await host.disable('sample');await assert.rejects(host.invoke('sample','read'));await host.uninstall('sample');assert.equal(host.list().length,1);assert.ok(events.length>=4);assert.throws(()=>host.register({...GIT_EXTENSION,id:'bad',apiVersion:2},stub()),/版本/);
+ await assert.rejects(host.invoke('sample','read'),/启用/);await host.initialize('sample',{});await host.enable('sample');assert.deepEqual(await host.invoke('sample','read',{a:1}),{method:'read',args:{a:1}});await host.disable('sample');await assert.rejects(host.invoke('sample','read'));await host.uninstall('sample');assert.equal(host.list().length,1);assert.ok(events.length>=4);assert.throws(()=>host.register({...GIT_EXTENSION,id:'bad',apiVersion:EXTENSION_API_VERSION+1},stub()),/版本/);
 });
 test('merge graph retains both parent edges and earlier rows remain identical on pagination',()=>{
  const commit=(id:string,parents:string[])=>({id,parents,author:'a',date:'2026-10-14',subject:id,refs:''});const prefix=[commit('merge',['left','right']),commit('left',['base'])],all=[...prefix,commit('right',['base']),commit('base',[])];
