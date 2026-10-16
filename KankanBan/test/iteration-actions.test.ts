@@ -19,7 +19,7 @@ test('a torn compound append cannot replay half an instance', () => {
   assert.equal(stateFingerprint(openWorkspace('/ws', broken.ops).state), before);
 });
 
-test('instantiate copies subtree, follows fields, overrides locally and undoes in one step', () => {
+test('instantiate copies a subtree atomically and synchronizes accumulated changes only when requested', () => {
   const fs = createMemoryFs();
   const s = openSession('/ws', { ops: fs.ops });
   const p = createCard(s, { parentId: '003', title: 'Template', isPrefab: true });
@@ -34,9 +34,18 @@ test('instantiate copies subtree, follows fields, overrides locally and undoes i
   assert.equal(stateFingerprint(s.state), before);
   const instance2 = executeAction(s, { kind: 'instantiate', id: p, parent: null }).createdId!;
   executeAction(s, { kind: 'edit', id: p, field: 'title', value: 'Updated' });
+  assert.equal(s.state.cards.get(instance2)?.title, 'Template', 'template edits remain pending until an explicit synchronization');
+  executeAction(s, { kind: 'prefab-sync', id: p, target: 'all' });
   assert.equal(s.state.cards.get(instance2)?.title, 'Updated');
   executeAction(s, { kind: 'edit', id: instance2, field: 'title', value: 'Override' });
-  executeAction(s, { kind: 'edit', id: p, field: 'title', value: 'Again' });
+  assert.deepEqual(s.state.cards.get(instance2)?.overrides, ['title']);
+  executeAction(s, { kind: 'edit', id: p, field: 'content', value: 'Template content' });
+  assert.equal(s.state.cards.get(instance2)?.content, '', 'unsynchronized source changes must not leak into the instance');
+  executeAction(s, { kind: 'prefab-sync', id: p, target: 'all' });
+  assert.equal(s.state.cards.get(instance2)?.content, 'Template content');
+  assert.equal(s.state.cards.get(instance2)?.title, 'Override', 'synchronizing an unrelated field preserves the local title override');
+  executeAction(s, { kind: 'prefab-sync', id: instance2, target: 'all' });
+  assert.equal(s.state.cards.get(p)?.title, 'Override', 'the instance can explicitly publish its pending override to the template and siblings');
   assert.equal(s.state.cards.get(instance2)?.title, 'Override');
   assert.throws(() => executeAction(s, { kind: 'delete', id: p }), /实例/);
   executeAction(s, { kind: 'detach', id: instance2 });

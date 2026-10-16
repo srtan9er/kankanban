@@ -1,5 +1,6 @@
 use tauri::Manager;
 use serde::Serialize;
+use std::collections::{BTreeMap, BTreeSet};
 const SNAP_MIN_PX: f64 = 10.0;
 const SNAP_RATIO_DIVISOR: f64 = 25.0;
 fn snap_threshold(a_w: f64, b_w: f64, scale: f64) -> f64 {
@@ -34,16 +35,25 @@ struct SnapHint {
     bottom: bool,
 }
 
-pub fn move_and_snap(app: &tauri::AppHandle, window: &tauri::WebviewWindow, x: f64, y: f64, finish: bool) -> Result<serde_json::Value, String> {
+pub struct CalculatedSnap {pub x:f64,pub y:f64,pub hints:serde_json::Value,pub chain_after:Option<String>}
+#[derive(Clone, Copy)]
+pub(crate) struct WindowRect {pub x:i32,pub y:i32,pub width:i32,pub height:i32}
+/// Resolve the accepted corner through the same candidates that position the window.
+/// Native labels remain stable even when exclusions change enumeration IDs.
+pub(crate) fn calculate_windows(windows:&BTreeMap<String,WindowRect>,source:&str,x:f64,y:f64,size:(i32,i32),area:Option<(i32,i32,i32,i32)>,scale:f64,exclude:&BTreeSet<String>)->CalculatedSnap {
+    let labels:Vec<_>=windows.keys().filter(|label|label.as_str()==source || !exclude.contains(*label)).collect();
+    let rects:Vec<_>=labels.iter().enumerate().map(|(id,label)|{let r=windows.get(*label).expect("enumerated window exists");NoteRect{id:id as u32,x:r.x,y:r.y,w:r.width,h:r.height}}).collect();
+    let source_id=labels.iter().position(|label|label.as_str()==source).map(|id|id as u32).unwrap_or(u32::MAX);
+    let (sx,sy,hint,_,after)=snap_position(&rects,source_id,x,y,size.0,size.1,area,scale);
+    let chain_after=after.and_then(|id|labels.get(id as usize)).filter(|label|crate::window_chain_runtime::eligible(label) && !exclude.contains(label.as_str())).map(|label|(*label).clone());
+    CalculatedSnap{x:sx,y:sy,hints:serde_json::to_value(hint).unwrap_or_default(),chain_after}
+}
+pub fn calculate(app: &tauri::AppHandle, window: &tauri::WebviewWindow, x: f64, y: f64, exclude: &std::collections::BTreeSet<String>) -> Result<CalculatedSnap, String> {
     if !x.is_finite() || !y.is_finite() { return Err(crate::i18n::text("native/snap.text001", &[]).into()); }
-    let mut rects = Vec::new();
-    let mut source = 0;
-    let mut labels: Vec<_> = app.webview_windows().into_iter().collect();
-    labels.sort_by(|a,b| a.0.cmp(&b.0));
-    for (i, (label, other)) in labels.iter().enumerate() {
-        if label == window.label() { source = i as u32; }
+    let mut rects = BTreeMap::new();
+    for (label, other) in app.webview_windows() {
         if let (Ok(p), Ok(s)) = (other.outer_position(), other.outer_size()) {
-            rects.push(NoteRect { id: i as u32, x: p.x, y: p.y, w: s.width as i32, h: s.height as i32 });
+            rects.insert(label, WindowRect { x: p.x, y: p.y, width: s.width as i32, height: s.height as i32 });
         }
     }
     let size = window.outer_size().map_err(|e| e.to_string())?;
@@ -51,9 +61,12 @@ pub fn move_and_snap(app: &tauri::AppHandle, window: &tauri::WebviewWindow, x: f
     let area = window.current_monitor().ok().flatten().map(|monitor| {
         let a = monitor.work_area(); (a.position.x, a.position.y, a.size.width as i32, a.size.height as i32)
     });
-    let (sx, sy, hint, _) = snap_position(&rects, source, x, y, size.width as i32, size.height as i32, area, scale);
-    window.set_position(tauri::PhysicalPosition::new(if finish { sx } else { x } as i32, if finish { sy } else { y } as i32)).map_err(|e| e.to_string())?;
-    Ok(serde_json::to_value(hint).unwrap_or_default())
+    Ok(calculate_windows(&rects,window.label(),x,y,(size.width as i32,size.height as i32),area,scale,exclude))
+}
+pub fn move_and_snap(app: &tauri::AppHandle, window: &tauri::WebviewWindow, x: f64, y: f64, finish: bool) -> Result<serde_json::Value, String> {
+    let snapped=calculate(app,window,x,y,&std::collections::BTreeSet::new())?;
+    window.set_position(tauri::PhysicalPosition::new(if finish {snapped.x}else{x} as i32,if finish {snapped.y}else{y} as i32)).map_err(|error|error.to_string())?;
+    Ok(snapped.hints)
 }
 
 
@@ -129,7 +142,7 @@ fn snap_position(
     h: i32,
     area: Option<(i32, i32, i32, i32)>, // 工作区 (x, y, w, h)
     scale: f64,
-) -> (f64, f64, SnapHint, Option<String>) {
+) -> (f64, f64, SnapHint, Option<String>, Option<u32>) {
     let (wf, hf) = (w as f64, h as f64);
 
     // 被拖便签【移动后】的矩形，用于"平行于吸附边的轴上必须重叠"的判断
@@ -230,7 +243,15 @@ fn snap_position(
     };
     let desc = desc.map(|d| crate::i18n::text("native/snap.text014", &[("arg0", format!("{}", d)), ("arg1", format!("{:.1}", shown_thr))]));
 
-    (hx.pos, hy.pos, hint, desc)
+    // The accepted position must be a complete lower-left corner, with both raw
+    // axes inside that target's own snap threshold. Coincident screen edges or
+    // an existing tail must not make this depend on enumeration/label order.
+    let chain_after=rects.iter().find(|rect|{
+        let threshold=snap_threshold(wf,rect.w as f64,scale);
+        rect.id!=source_id && hx.pos==rect.x as f64 && hy.pos==rect.bottom() as f64
+            && (desired_x-rect.x as f64).abs()<=threshold && (desired_y-rect.bottom() as f64).abs()<=threshold
+    }).map(|rect|rect.id);
+    (hx.pos, hy.pos, hint, desc, chain_after)
 }
 
 
@@ -238,16 +259,150 @@ fn snap_position(
 mod tests {
     use super::*;
     #[test]
+    fn accepted_lower_left_corner_connects_then_the_head_moves_its_follower() {
+        use crate::window_chain_runtime::{Point, Rect, WindowChainRuntime};
+        use std::collections::BTreeMap;
+        let head = "card-same__head";
+        let follower = "card-same__follower";
+        let rects = BTreeMap::from([
+            (head.into(), Rect { x: 100.0, y: 100.0, width: 400.0, height: 300.0 }),
+            (follower.into(), Rect { x: 800.0, y: 100.0, width: 400.0, height: 200.0 }),
+        ]);
+        let mut runtime = WindowChainRuntime::default();
+        assert!(runtime.begin(follower, rects.clone(), false));
+        let snapped=calculate_windows(&BTreeMap::from([
+            (head.into(),WindowRect{x:100,y:100,width:400,height:300}),
+            (follower.into(),WindowRect{x:800,y:100,width:400,height:200}),
+        ]),follower,114.0,414.0,(400,200),None,1.0,&Default::default());
+        let (x,y)=(snapped.x,snapped.y);
+        let (_, _, hint, _, _) = snap_position(
+            &[NoteRect { id: 1, x: 100, y: 100, w: 400, h: 300 }],
+            2, 114.0, 414.0, 400, 200, None, 1.0,
+        );
+        assert_eq!((x, y), (100.0, 400.0));
+        assert!(hint.left && hint.top);
+        assert_eq!(snapped.chain_after.as_deref(),Some(head));
+        runtime.preview_with_snap(follower, Point { x: 114.0, y: 414.0 }, Point { x, y }, 12.0,snapped.chain_after.as_deref()).unwrap();
+        runtime.finish(follower).unwrap();
+        assert_eq!(runtime.chains.next.get(head).map(String::as_str), Some(follower));
+        let mut connected = rects;
+        connected.get_mut(follower).unwrap().x = x;
+        connected.get_mut(follower).unwrap().y = y;
+        assert!(runtime.begin(head, connected, false));
+        let motion = runtime.preview(head, Point { x: 300.0, y: 200.0 }, Point { x: 300.0, y: 200.0 }, 12.0).unwrap();
+        assert_eq!(motion.positions.get(follower), Some(&Point { x: 300.0, y: 500.0 }));
+        let mut writes=BTreeMap::new();
+        crate::window_chain_runtime::apply_positions(&motion.positions,|label,x,y|{writes.insert(label.to_owned(),(x,y));Ok(())}).unwrap();
+        assert_eq!(writes,BTreeMap::from([(head.into(),(300,200)),(follower.into(),(300,500))]));
+    }
+    #[test]
+    fn accepted_corner_at_monitor_left_keeps_window_provenance_at_each_scale() {
+        for (left,scale,width,height,offset) in [(0,1.0,400,300,14),(-1920,1.0,400,300,14),(-3840,2.0,800,600,28)] {
+            let windows=BTreeMap::from([
+                ("card-head__one".into(),WindowRect{x:left,y:100,width,height}),
+                ("card-follower__two".into(),WindowRect{x:left+900,y:100,width,height:200}),
+            ]);
+            let snapped=calculate_windows(&windows,"card-follower__two",(left+offset) as f64,(100+height+offset) as f64,(width,200),Some((left,0,3840,2160)),scale,&Default::default());
+            assert_eq!((snapped.x,snapped.y),(left as f64,(100+height) as f64));
+            assert_eq!(snapped.chain_after.as_deref(),Some("card-head__one"),"left={left}, scale={scale}");
+        }
+    }
+    #[test]
+    fn other_edges_single_axis_screen_and_main_do_not_establish_a_chain() {
+        let windows=BTreeMap::from([
+            ("card-head__one".into(),WindowRect{x:100,y:100,width:400,height:300}),
+            ("card-follower__two".into(),WindowRect{x:800,y:100,width:400,height:200}),
+        ]);
+        for desired in [(200.0,414.0),(514.0,114.0),(114.0,114.0)] {
+            let snap=calculate_windows(&windows,"card-follower__two",desired.0,desired.1,(400,200),None,1.0,&Default::default());
+            assert_eq!(snap.chain_after,None,"desired={desired:?}");
+        }
+        let screen=calculate_windows(&BTreeMap::new(),"card-follower__two",-1915.0,6.0,(400,200),Some((-1920,0,1920,1040)),1.0,&Default::default());
+        assert_eq!((screen.x,screen.y),(-1920.0,0.0));assert_eq!(screen.chain_after,None);
+        let main=BTreeMap::from([("main".into(),WindowRect{x:100,y:100,width:400,height:300})]);
+        let snap=calculate_windows(&main,"card-follower__two",114.0,414.0,(400,200),None,1.0,&Default::default());
+        assert_eq!((snap.x,snap.y),(100.0,400.0));assert_eq!(snap.chain_after,None);
+        let excluded=BTreeSet::from(["card-head__one".to_owned()]);
+        let snap=calculate_windows(&windows,"card-follower__two",114.0,414.0,(400,200),None,1.0,&excluded);
+        assert_eq!((snap.x,snap.y),(114.0,414.0));assert_eq!(snap.chain_after,None);
+    }
+    #[test]
+    fn different_axis_targets_without_a_complete_corner_do_not_establish_a_chain() {
+        use crate::window_chain_runtime::{Point,Rect,WindowChainRuntime};
+        let windows=BTreeMap::from([
+            ("card-a-x".into(),WindowRect{x:100,y:300,width:400,height:400}),
+            ("card-b-y".into(),WindowRect{x:50,y:100,width:500,height:300}),
+            ("card-c-nearby".into(),WindowRect{x:100,y:70,width:100,height:300}),
+        ]);
+        let snap=calculate_windows(&windows,"card-source",105.0,405.0,(400,200),None,1.0,&Default::default());
+        assert_eq!((snap.x,snap.y),(100.0,400.0));
+        assert_eq!(snap.chain_after,None);
+        let mut rects:BTreeMap<_,_>=windows.iter().map(|(label,r)|(label.clone(),Rect{x:r.x as f64,y:r.y as f64,width:r.width as f64,height:r.height as f64})).collect();
+        rects.insert("card-source".into(),Rect{x:800.0,y:100.0,width:400.0,height:200.0});
+        let mut runtime=WindowChainRuntime::default();runtime.begin("card-source",rects,false);
+        let motion=runtime.preview_with_snap("card-source",Point{x:105.0,y:405.0},Point{x:snap.x,y:snap.y},12.0,snap.chain_after.as_deref()).unwrap();
+        assert!(!motion.attached);
+        runtime.finish("card-source").unwrap();assert_eq!(runtime.chains.prev("card-source"),None);
+    }
+    #[test]
+    fn final_absent_corner_is_authoritative_over_the_raw_preview_radius() {
+        use crate::window_chain_runtime::{Point,Rect,WindowChainRuntime};
+        let mut runtime=WindowChainRuntime::default();
+        runtime.begin("card-source",BTreeMap::from([
+            ("card-head".into(),Rect{x:100.0,y:100.0,width:400.0,height:300.0}),
+            ("card-source".into(),Rect{x:800.0,y:100.0,width:400.0,height:200.0}),
+        ]),false);
+        let desired=Point{x:105.0,y:405.0};
+        assert!(runtime.preview("card-source",desired,desired,12.0).unwrap().attached);
+        assert!(!runtime.preview_with_snap("card-source",desired,desired,12.0,None).unwrap().attached);
+        runtime.finish("card-source").unwrap();assert_eq!(runtime.chains.prev("card-source"),None);
+    }
+    #[test]
+    fn accepted_corner_inserts_a_middle_suffix_and_moves_all_full_labels() {
+        use crate::window_chain::WindowChains;
+        use crate::window_chain_runtime::{apply_positions,Point,Rect,WindowChainRuntime};
+        for labels in [
+            ["card-head__first","card-shared__middle","card-shared__tail","card-ext-git__new"],
+            ["card-z-head__first","card-a-shared__middle","card-a-shared__tail","card-ext-git__new"],
+        ] {
+        let mut windows=BTreeMap::from([
+            (labels[0].into(),WindowRect{x:100,y:100,width:400,height:300}),
+            (labels[1].into(),WindowRect{x:100,y:400,width:400,height:200}),
+            (labels[2].into(),WindowRect{x:100,y:600,width:400,height:100}),
+            (labels[3].into(),WindowRect{x:800,y:100,width:400,height:150}),
+        ]);
+        let rects=|windows:&BTreeMap<String,WindowRect>|windows.iter().map(|(label,r)|(label.clone(),Rect{x:r.x as f64,y:r.y as f64,width:r.width as f64,height:r.height as f64})).collect();
+        let mut runtime=WindowChainRuntime::default();
+        runtime.chains=WindowChains::from_links(BTreeMap::from([(labels[0].into(),labels[1].into()),(labels[1].into(),labels[2].into())]));
+        assert!(runtime.begin(labels[3],rects(&windows),false));
+        let snap=calculate_windows(&windows,labels[3],114.0,414.0,(400,150),None,1.0,&runtime.members(labels[3]));
+        assert_eq!(snap.chain_after.as_deref(),Some(labels[0]));
+        runtime.preview_with_snap(labels[3],Point{x:114.0,y:414.0},Point{x:snap.x,y:snap.y},12.0,snap.chain_after.as_deref()).unwrap();
+        let completed=runtime.finish(labels[3]).unwrap();
+        apply_positions(&completed.positions,|label,x,y|{let r=windows.get_mut(label).unwrap();r.x=x;r.y=y;Ok(())}).unwrap();
+        assert_eq!(runtime.chains.suffix(labels[0]),[labels[0],labels[3],labels[1],labels[2]]);
+        assert!(runtime.begin(labels[3],rects(&windows),false));
+        let motion=runtime.preview(labels[3],Point{x:700.0,y:200.0},Point{x:700.0,y:200.0},12.0).unwrap();
+        let mut writes=BTreeMap::new();
+        apply_positions(&motion.positions,|label,x,y|{writes.insert(label.to_owned(),(x,y));Ok(())}).unwrap();
+        assert_eq!(writes,BTreeMap::from([(labels[3].into(),(700,200)),(labels[1].into(),(700,350)),(labels[2].into(),(700,550))]));
+        assert!(!writes.contains_key(labels[0]));
+        let restored=runtime.cancel(labels[3]).unwrap();
+        assert_eq!(restored.positions.get(labels[3]),Some(&Point{x:100.0,y:400.0}));
+        assert_eq!(runtime.chains.suffix(labels[0]),[labels[0],labels[3],labels[1],labels[2]]);
+        }
+    }
+    #[test]
     fn snaps_adjacent_edges_but_not_infinite_lines() {
         let other = NoteRect { id: 2, x: 400, y: 100, w: 200, h: 200 };
-        let (x, _, hint, _) = snap_position(&[other], 1, 205.0, 120.0, 200, 200, None, 1.0);
+        let (x, _, hint, _, _) = snap_position(&[other], 1, 205.0, 120.0, 200, 200, None, 1.0);
         assert_eq!(x, 200.0); assert!(hint.right);
-        let (x, y, _, _) = snap_position(&[other], 1, 205.0, 800.0, 200, 200, None, 1.0);
+        let (x, y, _, _, _) = snap_position(&[other], 1, 205.0, 800.0, 200, 200, None, 1.0);
         assert_eq!((x, y), (205.0, 800.0));
     }
     #[test]
     fn snaps_to_monitor_work_area_with_negative_origin() {
-        let (x, y, hint, _) = snap_position(&[], 1, -1915.0, 6.0, 200, 200, Some((-1920, 0, 1920, 1040)), 1.0);
+        let (x, y, hint, _, _) = snap_position(&[], 1, -1915.0, 6.0, 200, 200, Some((-1920, 0, 1920, 1040)), 1.0);
         assert_eq!((x, y), (-1920.0, 0.0)); assert!(hint.left && hint.top);
     }
 }

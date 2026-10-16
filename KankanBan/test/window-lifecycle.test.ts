@@ -4,11 +4,11 @@
  * ```
  * 总是打开 main（000）；其余窗口按 view-state.json 恢复上次会话中打开的集合
  * （默认开启恢复，可在设置里关掉）
- * 恢复时校验：若某卡当前 parent !== null（已被拖进容器），不恢复窗口（符合不变量 W）
+ * 恢复时校验：卡片仍存在且未删除即可恢复；子卡也可独立展开，归属变化不关闭窗口。
  * ```
  *
- * 校验直接落在 `desktopCards` 上 —— 它已经是"未删除的根卡"，
- * 所以"被拖进容器"与"已删除"两种失效情形**自动被过滤掉**，不需要另写判断。
+ * 窗口恢复与卡片树的根节点列表分开：只有已删除或不存在的卡片需要被过滤。
+ * 同一卡片的不同独立窗口仍由各自的窗口 ID 识别。
  */
 
 import { test } from 'node:test';
@@ -98,7 +98,7 @@ test('上次开着的窗口会被恢复', () => {
   assert.deepEqual(restorableWindows(session.state, ['001', mine]), ['000', '001', mine].sort());
 });
 
-test('§7.3 的校验：上次开着、但现在已被拖进容器的卡**不恢复**', () => {
+test('§7.3 的校验：上次开着的子卡独立窗口仍恢复，卡片归属变化不影响恢复', () => {
   const { session } = makeSession();
   ensureBuiltins(session);
   const loose = createCard(session, { parentId: null, title: '浮在外面的' });
@@ -112,8 +112,8 @@ test('§7.3 的校验：上次开着、但现在已被拖进容器的卡**不恢
 
   assert.deepEqual(
     restorableWindows(session.state, remembered),
-    ['000', container].sort(),
-    'loose 已经不是根卡，不恢复它的窗口（不变量 W）',
+    ['000', loose, container].sort(),
+    'loose 已成为子卡，但它与容器的独立窗口仍应同时恢复',
   );
 });
 

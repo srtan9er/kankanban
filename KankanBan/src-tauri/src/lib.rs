@@ -21,6 +21,14 @@ use tauri::{Manager, Emitter};
 mod i18n;
 mod desktop;
 mod snap;
+mod window_chain;
+mod window_chain_follow;
+mod window_chain_bounds;
+mod window_chain_zorder;
+mod window_chain_runtime;
+mod window_chain_pin;
+#[cfg(test)]
+mod window_chain_effect_tests;
 mod mcp_bridge;
 mod mcp_config;
 mod themes;
@@ -36,8 +44,8 @@ fn path_of(raw: &str) -> PathBuf {
 // ===========================================================================
 // 卡片窗口（多窗口）—— 机制完全照 `sticky-tauri` 的便签窗口来
 //
-// 【标签就是身份】`card-{id}` ↔ 卡片 id，和便签的 `note-{id}` 一个套路。
-// 为什么不另发一套窗口 id：§2.8 不变量 W′ 说窗口的身份就是那张根卡的 id。
+// `card-{viewId}` identifies one desktop expansion. Several view IDs may share
+// a card; native chains always retain the complete stable native window label.
 //
 // 【命令必须是 async】Tauri 的同步命令跑在**主线程**上，而 `build()` 需要事件循环
 // 才能真正建窗 —— 主线程阻塞着等主线程，直接死锁（`sticky-tauri` 实测：日志停在
@@ -97,7 +105,7 @@ fn card_labels_of(app: &tauri::AppHandle) -> Vec<String> {
 fn spawn_card_window(app: &tauri::AppHandle, card_id: &str, focus: bool) -> Result<(), String> {
     let label = label_of_card(card_id);
 
-    // 已经开着就直接返回 —— 重复点「提出到屏幕窗口」不该叠出第二扇。
+    // Restore/sync are idempotent by view ID; explicit openings mint a new ID.
     if let Some(existing) = app.get_webview_window(&label) {
         if focus {
             let _ = existing.set_focus();
@@ -130,7 +138,7 @@ fn spawn_card_window(app: &tauri::AppHandle, card_id: &str, focus: bool) -> Resu
         .shadow(false)
         .focused(focus)
         .always_on_top(false)
-        .skip_taskbar(true)
+        .skip_taskbar(false)
         // 和便签一样固定尺寸：无装饰 + 无阴影时客户区铺满窗口，没有可抓的缩放边框。
         .resizable(false)
         .maximizable(false)
@@ -139,13 +147,17 @@ fn spawn_card_window(app: &tauri::AppHandle, card_id: &str, focus: bool) -> Resu
         .map_err(|error| crate::i18n::text("native/lib.text003", &[("arg0", format!("{}", label)), ("arg1", format!("{}", error))]))?;
 
     if let Some(window) = app.get_webview_window(&label) { desktop::restore_window(app, &window); }
+    window_chain_runtime::restore_available(app)?;
     Ok(())
 }
 
 fn close_card_window_impl(app: &tauri::AppHandle, card_id: &str) -> Result<(), String> {
     let label = label_of_card(card_id);
     match app.get_webview_window(&label) {
-        Some(window) => { desktop::save_window(app, &window); window.destroy().map_err(|error| crate::i18n::text("native/lib.text004", &[("arg0", format!("{}", label)), ("arg1", format!("{}", error))])) },
+        Some(window) => {
+            desktop::save_windows(app,std::iter::once(window.clone()))?;
+            window_chain_runtime::close_window(app,&label,true)
+        },
         // 本来就不在 = 目标已达成，不算失败。
         None => Ok(()),
     }
@@ -234,9 +246,11 @@ async fn fs_remove(app: tauri::AppHandle, window: tauri::WebviewWindow, path: St
 /// 统一给出正斜杠形式，与 core 的 `joinPath` 对齐（Windows 也认）。
 #[tauri::command]
 async fn workspace_root(app: tauri::AppHandle, window: tauri::WebviewWindow) -> Result<String, String> {
+    window_chain_runtime::with_window_effects(&app,|| {
     let dir = desktop::root(&app)?;
     if window.label() == "main" { desktop::restore_window(&app, &window); }
     Ok(desktop::display_path(&dir))
+    }).await
 }
 
 /// 当前真实存在的卡片窗口标签。前端的镜像窗口用它对账，避免"内存里以为开着、其实早关了"。
@@ -248,23 +262,24 @@ async fn card_window_labels(app: tauri::AppHandle) -> Vec<String> {
 /// 把一张卡片提到屏幕窗口（§2.8「提出到屏幕窗口」）。已开着就只聚焦。
 #[tauri::command]
 async fn open_card_window(app: tauri::AppHandle, window: tauri::WebviewWindow, card_id: String) -> Result<(), String> {
+    window_chain_runtime::with_window_effects(&app,|| {
     desktop::require_main(&window)?;
     spawn_card_window(&app, &card_id, false)?;
     if let Some(card_window) = app.get_webview_window(&label_of_card(&card_id)) {
-        desktop::set_note_mode(app.clone(), card_window.clone(), Some(false), None).await?;
+        desktop::set_note_mode_inner(&app, &card_window, Some(false), None)?;
         card_window.unminimize().map_err(|error| error.to_string())?;
         card_window.show().map_err(|error| error.to_string())?;
         card_window.emit("kkb:window-activated", serde_json::json!({"label":card_window.label()})).map_err(|error| error.to_string())?;
         card_window.set_focus().map_err(|error| error.to_string())?;
     }
     Ok(())
+    }).await
 }
 
 /// 关掉一张卡片的窗口。**只关窗口，不碰树** —— 用户定案：关闭不影响任何结构。
 #[tauri::command]
 async fn close_card_window(app: tauri::AppHandle, window: tauri::WebviewWindow, card_id: String) -> Result<(), String> {
-    desktop::require_main(&window)?;
-    close_card_window_impl(&app, &card_id)
+    window_chain_runtime::with_window_effects(&app,|| {desktop::require_main(&window)?;close_card_window_impl(&app, &card_id)}).await
 }
 
 /// 让真实窗口集合与 `wanted` 对齐（多退少补），返回过程中的问题而不是直接失败。
@@ -273,6 +288,9 @@ async fn close_card_window(app: tauri::AppHandle, window: tauri::WebviewWindow, 
 /// 三种情况用同一条路径收敛 —— 不需要前端自己记"上一轮开了哪些"。
 #[tauri::command]
 async fn sync_card_windows(app: tauri::AppHandle, window: tauri::WebviewWindow, wanted: Vec<String>) -> Vec<String> {
+    window_chain_runtime::with_window_effects(&app,||Ok(sync_card_windows_inner(&app,&window,wanted))).await.unwrap_or_else(|error|vec![error])
+}
+fn sync_card_windows_inner(app: &tauri::AppHandle, window: &tauri::WebviewWindow, wanted: Vec<String>) -> Vec<String> {
     if let Err(e) = desktop::require_main(&window) { return vec![e]; }
     let mut problems = Vec::new();
 
@@ -289,14 +307,9 @@ async fn sync_card_windows(app: tauri::AppHandle, window: tauri::WebviewWindow, 
         if wanted.iter().any(|want| want == card_id) {
             continue;
         }
-        if let Some(window) = app.get_webview_window(&label) {
-            desktop::save_window(&app, &window);
-            if let Err(error) = window.destroy() {
-                problems.push(crate::i18n::text("native/lib.text004", &[("arg0", format!("{}", label)), ("arg1", format!("{}", error))]));
-            }
-        }
+        if let Err(error)=close_card_window_impl(&app,card_id){problems.push(error);}
     }
-
+    if let Err(error)=window_chain_runtime::prune(&app){problems.push(error);}
     problems
 }
 
@@ -350,6 +363,10 @@ pub fn run() {
             desktop::window_preferences,
             desktop::set_note_mode,
             desktop::move_note,
+            desktop::begin_window_drag,
+            desktop::cancel_window_drag,
+            desktop::raise_window_chain,
+            desktop::minimize_note,
             desktop::drag_mouse_buttons,
             desktop::resize_note,
             desktop::set_board_view,
@@ -363,6 +380,26 @@ pub fn run() {
             desktop::choose_workspace_folder,
         ])
         .on_window_event(|window, event| {
+            if matches!(event,tauri::WindowEvent::Focused(true)) && window_chain_runtime::eligible(window.label()) {
+                let app=window.app_handle().clone();let label=window.label().to_owned();
+                tauri::async_runtime::spawn(async move {
+                    let result=window_chain_runtime::with_window_effects(&app,||{
+                        let chains=app.state::<desktop::DesktopState>().chains.lock().map_err(|error|error.to_string())?.visible_chains();
+                        window_chain_zorder::raise_group(&app,&chains,&label,true)
+                    }).await;
+                    if let Err(error)=result {let _=app.emit("kkb:window-chain-error",serde_json::json!({"error":error}));}
+                });
+            }
+            if matches!(event,tauri::WindowEvent::Destroyed) && window.label()!=MAIN_LABEL {
+                // A native destroy can synchronously enter this UI-thread callback.
+                // Queue cleanup; waiting for the effect gate here would deadlock destroy().
+                let app=window.app_handle().clone();let label=window.label().to_owned();
+                tauri::async_runtime::spawn(async move {
+                    if let Err(error)=window_chain_runtime::with_window_effects(&app,||window_chain_runtime::destroyed(&app,&label)).await {
+                        let _=app.emit("kkb:window-chain-error",serde_json::json!({"error":error}));
+                    }
+                });
+            }
             // 管理器一关就顺手收掉所有卡片窗口 —— 照抄便签项目的那条规则。
             //
             // 这个应用的 main 窗口不只是门面：按方案 A（§14）它是**唯一写者**，

@@ -18,7 +18,7 @@ import { createCard, deleteCard, moveCard, openSession, setField, undoLast } fro
 import type { Session } from '../src/core/workspace.ts';
 import { createMemoryFs } from '../src/platform/memory-fs-ops.ts';
 import { viewOf, type CardView } from '../src/core/view-model.ts';
-import { emptyViewState, readViewState, setFocus, setRegionSize, writeViewState } from '../src/core/view-state.ts';
+import { emptyViewState, readViewState, setFocus, setRegionSize, writeViewState, type ViewState } from '../src/core/view-state.ts';
 /** `viewOf` 现在可能返回 null（根卡没了）。这里测的场景里根卡一直在，所以断言非空。 */
 function mustView(...args: Parameters<typeof viewOf>): CardView {
   const model = viewOf(...args);
@@ -233,7 +233,7 @@ test('内存平台上 view-state 往返 + viewOf 出结果', () => {
   const root = createCard(session, { parentId: null, title: '根' });
   const mid = createCard(session, { parentId: root, title: '中' });
 
-  let view = emptyViewState();
+  let view: ViewState = { ...emptyViewState(), skin: 'dark', theme: 'custom.css', canvasSwapButtons: false, cardRadius: 14 };
   view = setFocus(view, root, mid);
   view = setRegionSize(view, root, 'content', 300);
   writeViewState(ROOT, view, memory.ops);

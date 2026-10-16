@@ -55,6 +55,13 @@ export async function connectDesktop(c: WorkspaceController, label: string) {
     return mirror!.request(action);
   };
   const unlisteners: (() => void)[] = [];
+  if(cardIdFromLabel(label)!==null){
+    let disposed=false;
+    const raiseChain=():void=>{void invoke('raise_window_chain').catch(error=>{if(!disposed)errorHandler(String(error));});};
+    document.addEventListener('pointerdown',raiseChain,true);
+    unlisteners.push(()=>{disposed=true;document.removeEventListener('pointerdown',raiseChain,true);});
+  }
+  unlisteners.push(await listen<{error:string}>('kkb:window-chain-error',event=>errorHandler(event.payload.error)));
   unlisteners.push(await listen('kkb:theme-reload',()=>window.dispatchEvent(new Event('kkb:theme-reload'))));
   if(mirror)unlisteners.push(()=>mirror.dispose());
   const onWindowOperation=(event:Event)=>{void request({kind:'window-state',windowLabel:label,changes:(event as CustomEvent<Record<string,unknown>>).detail}).catch(error=>errorHandler(String(error)));};

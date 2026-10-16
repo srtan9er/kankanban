@@ -7,7 +7,7 @@ import {CardBodyEditor,type CardBodyEditorHandle} from './CardBodyEditor.tsx';
 import type {BodyEditPoint} from './body-edit-position.ts';
 import {onScrollbar} from './drag-geometry.ts';
 import {bodyTextHit} from './body-text-hit.ts';
-import {listen,type UnlistenFn} from '@tauri-apps/api/event';
+import {listen,type UnlistenFn,type Event as TauriEvent} from '@tauri-apps/api/event';
 import {uiText} from '../i18n/text.ts';
 import {PrefabSyncButtons} from './PrefabSyncButtons.tsx';
 import {canvasBindings,type CanvasDragAction,type CanvasDragBindings} from '../core/canvas-drag.ts';
@@ -21,10 +21,10 @@ import { isTauri } from './tauri-backend.ts';
 import { Drafts, registerEditor } from './drafts.ts';
 import { CardRegions, type ChildArea } from './CardRegions.tsx';
 
-export function PrototypeNote({ card, viewId=card.id, send, close, children, breadcrumb, startDrag, extension = false, hideBody = false, waterfall = false, canvas = false, vertical = false, ordinary = true, childSize, add, dragBindings = canvasBindings({}) }: {
+export function PrototypeNote({ card, viewId=card.id, send, close, children, breadcrumb, menuButton, startDrag, extension = false, hideBody = false, waterfall = false, canvas = false, vertical = false, ordinary = true, childSize, add, dragBindings = canvasBindings({}) }: {
   extension?:boolean; dragBindings?: CanvasDragBindings; waterfall?: boolean; canvas?: boolean; hideBody?: boolean; vertical?: boolean; ordinary?: boolean; childSize?: ChildArea | undefined; add: () => void;
   viewId?:string|undefined; card: CardFields; send: (request: Request) => Promise<{ createdId?: string }>;
-  close?: (() => void) | undefined; children: ReactNode; breadcrumb: ReactNode;
+  close?: (() => void) | undefined; children: ReactNode; breadcrumb: ReactNode; menuButton?: ReactNode;
   startDrag?: ((id: string, event: ReactPointerEvent, mode?: CanvasDragAction) => void) | undefined;
 }) {
   const [editingField, setEditingField] = useState<'title' | 'content' | null>(null);
@@ -47,6 +47,7 @@ export function PrototypeNote({ card, viewId=card.id, send, close, children, bre
   };
   const [collapsed, setCollapsed] = useState(false);
   const [pinned, setPinned] = useState(false);
+  const pinRevision=useRef(0);
   const [error, setError] = useState('');
   const [title, setTitle] = useState(card.title), [content, setContent] = useState(card.content);
   const drafts = useRef(new Drafts((field, value,before) => send({ before,kind: 'edit', id: card.id, field, value })));
@@ -100,14 +101,17 @@ export function PrototypeNote({ card, viewId=card.id, send, close, children, bre
   }, [card.id]);
   useEffect(() => {
     if(!isTauri())return;
-    let disposed=false,unlisten:UnlistenFn|undefined;
-    void invoke<{collapsed:boolean;pinned:boolean}|null>('window_preferences').then(p=>{if(p && !disposed){setCollapsed(p.collapsed);setPinned(p.pinned);}}).catch(e=>{if(!disposed)setError(String(e));});
-    void listen<{label:string}>('kkb:window-activated',event=>{if(event.payload.label===getCurrentWindow().label){setCollapsed(false);}}).then(stop=>{if(disposed)stop();else unlisten=stop;}).catch(e=>{if(!disposed)setError(String(e));});
-    return()=>{disposed=true;unlisten?.();};
+    let disposed=false;const unlisteners:UnlistenFn[]=[],initialPinRevision=pinRevision.current;
+    const keep=(task:Promise<UnlistenFn>)=>{void task.then(stop=>{if(disposed)stop();else unlisteners.push(stop);}).catch(e=>{if(!disposed)setError(String(e));});};
+    void invoke<{collapsed:boolean;pinned:boolean}|null>('window_preferences').then(p=>{if(p && !disposed){setCollapsed(p.collapsed);if(initialPinRevision===pinRevision.current)setPinned(p.pinned);}}).catch(e=>{if(!disposed)setError(String(e));});
+    keep(listen<{label:string}>('kkb:window-activated',event=>{if(event.payload.label===getCurrentWindow().label){setCollapsed(false);}}));
+    keep(getCurrentWindow().listen<{pinned:boolean}>('kkb:window-chain-pin',(event:TauriEvent<{pinned:boolean}>)=>{if(!disposed&&typeof event.payload.pinned==='boolean'){++pinRevision.current;setPinned(event.payload.pinned);}}));
+    return()=>{disposed=true;unlisteners.forEach(stop=>stop());};
   }, []);
   const mode = (key: 'collapsed' | 'pinned', value: boolean): void => {
+    const revision=key==='pinned'?++pinRevision.current:0;
     if (!isTauri()) { (key === 'collapsed' ? setCollapsed : setPinned)(value); return; }
-    void invoke('set_note_mode', { [key]: value }).then(() => {(key === 'collapsed' ? setCollapsed : setPinned)(value);document.dispatchEvent(new CustomEvent('kkb:window-operation',{detail:{operation:'mode',key,value}}));}).catch(e => setError(String(e)));
+    void invoke('set_note_mode', { [key]: value }).then(() => {if(key==='collapsed')setCollapsed(value);else if(revision===pinRevision.current)setPinned(value);document.dispatchEvent(new CustomEvent('kkb:window-operation',{detail:{operation:'mode',key,value}}));}).catch(e => setError(String(e)));
   };
   const fixedCanvasDrag=useFixedCanvasDrag(canvas && !!startDrag,dragBindings,(e,mode)=>{flush();startDrag?.(card.id,e,mode);});
   const rightPointer=useRef<number|null>(null);
@@ -128,11 +132,11 @@ export function PrototypeNote({ card, viewId=card.id, send, close, children, bre
   return <div {...editPress} data-scroll-owner={`card:${card.id}`} className={`proto-note ${extension ? "extension-note" : ""} ${canvas ? "canvas-note" : waterfall ? "waterfall-note" : hideBody ? "board-note" : ""}`} data-drop-parent={editable && !extension?card.id:undefined} onKeyDown={e=>{if(!preview && !e.nativeEvent.isComposing && (e.key==='Escape' || ((e.ctrlKey || e.metaKey) && e.key==='Enter'))){e.preventDefault(); e.stopPropagation(); finishEdit();}}}><div {...fixedCanvasDrag} onPointerDownCapture={e=>{if(canvas)fixedCanvasDrag.onPointerDownCapture(e);else rightWindowDrag(e);}} onPointerMoveCapture={e=>{if(canvas)fixedCanvasDrag.onPointerMoveCapture(e);else if(e.buttons&2)rightWindowDrag(e);}} onPointerUpCapture={e=>{fixedCanvasDrag.onPointerUpCapture();if(!(e.buttons&2))rightPointer.current=null;}} onPointerCancelCapture={()=>{fixedCanvasDrag.onPointerCancelCapture();rightPointer.current=null;}} onPointerDown={e => { if (!bodyTextHit(e.target as Element) && !(e.target as HTMLElement).closest("button,[data-card-id],[role=separator],[data-drawing-surface]")) moveWindow(e); }} className={`card ${card.isPrefab ? 'prefab' : card.prefabRef ? 'instance' : ''} ${preview ? 'viewing-mode' : `editing-mode editing-${editingField}`} ${error ? 'error' : ''} `}>
     <div className="note-title-row">{!extension && <button className="reparent-grip" aria-label={uiText("webview/PrototypeNote.text002")} title={uiText("webview/PrototypeNote.text002")} onPointerDown={e=>{if(!editable || e.button!==0)return;flush();startDrag?.(card.id,e);}} onClick={e=>e.stopPropagation()} />}<input ref={titleInput} readOnly={editingField!=="title"} disabled={finishing} onPointerDown={e=>{if(editingField==="title"&&e.button===0)e.stopPropagation();else if(e.button===0)e.preventDefault();}} className="title" aria-label={uiText("webview/PrototypeNote.text003")} value={title} onChange={e => change('title', e.target.value)} onBlur={flush} />
       <button className="collapse" title={collapsed ? uiText("webview/PrototypeNote.text004") : uiText("webview/PrototypeNote.text005")} onClick={() => mode('collapsed', !collapsed)}>{collapsed ? '▴' : '▾'}</button>
-      <button className={`pin ${pinned ? '' : 'off'}`} title={pinned ? uiText("webview/PrototypeNote.text006") : uiText("webview/PrototypeNote.text007")} onClick={() => mode('pinned', !pinned)}>●</button>
+      <button className={`pin ${pinned ? '' : 'off'}`} aria-pressed={pinned} title={pinned ? uiText("webview/PrototypeNote.text006") : uiText("webview/PrototypeNote.text007")} onClick={() => mode('pinned', !pinned)}>●</button>
       {!extension && <button className="toggle" aria-label={uiText(editable?'webview/PrototypeNote.browseMode':'webview/PrototypeNote.editMode')} title={uiText(editable?'webview/PrototypeNote.browseMode':'webview/PrototypeNote.editMode')} aria-pressed={editable} disabled={finishing || modeBusy} onClick={()=>{if(editingField==='content')bodyEditor.current?.captureExit();toggle?.();}}>{editable ? '✎' : '◉'}</button>}
       <button className="close" title={uiText("webview/PrototypeNote.text013")} onClick={() => { flush(); close?.(); }}>×</button>
     </div>
-    {!collapsed && <><div className="note-breadcrumb">{card.isPrefab && <span className="prefab-badge">{uiText("webview/PrototypeNote.text014")}</span>}{breadcrumb}{!extension && <button className="share-card-button" title={uiText("share.export")} aria-label={uiText("share.export")} onClick={()=>void flushAsync().then(()=>send({kind:"share-export",id:card.id})).catch(error=>setError(String(error)))}>↗</button>}<PrefabSyncButtons card={card} send={send}/></div>
+    {!collapsed && <><div className="note-breadcrumb">{card.isPrefab && <span className="prefab-badge">{uiText("webview/PrototypeNote.text014")}</span>}{breadcrumb}{menuButton}{!extension && <button className="share-card-button" title={uiText("share.export")} aria-label={uiText("share.export")} onClick={()=>void flushAsync().then(()=>send({kind:"share-export",id:card.id})).catch(error=>setError(String(error)))}>↗</button>}<PrefabSyncButtons card={card} send={send}/></div>
       {error && <div className="note-error" role="alert">{error}<button onClick={() => { setError(''); flush(); }}>{uiText("webview/PrototypeNote.text015")}</button></div>}
       {!hideBody && ordinary ? <CardRegions vertical={vertical} saved={childSize} save={area=>{void send({kind:'view',id:viewId,cardId:card.id,layout:vertical?'ordered':'plain',childArea:area}).catch(e=>setError(String(e)));}} add={add} body={documentBody}>{children}</CardRegions> : <>{!hideBody && documentBody}<div className="note-children">{children}</div>{!canvas && (!hideBody || waterfall) && <button className="floating-add-card" aria-label={uiText("webview/PrototypeNote.text019")} title={uiText("webview/PrototypeNote.text019")} onClick={add}><AddIcon/></button>}</>}
       <button className="resize window-resize-handle" title={uiText("webview/PrototypeNote.text020")} onPointerDown={resize} /></>}

@@ -25,6 +25,8 @@ function card(id: string, over: Partial<CardFields> = {}): CardFields {
     layout: 'plain',
     isPrefab: false,
     prefabRef: null,
+    prefabBase: null,
+    doodle: null,
     overrides: [],
     createdAt: 0,
     updatedAt: 0,

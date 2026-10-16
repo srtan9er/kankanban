@@ -19,7 +19,7 @@ import type { Session } from '../src/core/workspace.ts';
 import { openWorkspace } from '../src/core/storage/workspace-io.ts';
 import { replay } from '../src/core/replay.ts';
 import { undoEvent } from '../src/core/undo.ts';
-import type { Layout, OrderedEntry, PlainEntry } from '../src/core/types.ts';
+import type { Layout, OrderedEntry, PlainEntry, PlaneEntry } from '../src/core/types.ts';
 import { callTool } from '../src/mcp/tools.ts';
 import { createMemoryFs } from '../src/platform/memory-fs-ops.ts';
 
@@ -253,17 +253,35 @@ test('MCP 的 set_layout 是那条路的正确替代', () => {
   assert.deepEqual(session.state.children.get(parent), [{ id: child, order: 0 }]);
 });
 
-test('MCP 的 set_layout 改成 plane 时要求坐标', () => {
+test('MCP 的 set_layout 自动分布平面子卡，同时遵守显式给出的坐标', () => {
   const session = mcpSession();
   const parent = idOf(callTool(session, 'create_card', { title: 'P' }));
-  idOf(callTool(session, 'create_card', { title: 'C', parentId: parent }));
+  const children = Array.from({ length: 6 }, (_, index) =>
+    idOf(callTool(session, 'create_card', { title: `C${index}`, parentId: parent })),
+  );
+  const automatic = callTool(session, 'set_layout', { cardId: parent, layout: 'plane' }) as { layout: string };
+  assert.equal(automatic.layout, 'plane');
+  const entries = session.state.children.get(parent) as PlaneEntry[];
+  assert.deepEqual(entries.map(entry => entry.id), children, '自动排布不能改变节点身份或同级顺序');
+  assert.equal(new Set(entries.map(entry => `${entry.x},${entry.y}`)).size, children.length);
+  for (const entry of entries) {
+    assert.ok([entry.x, entry.y, entry.w, entry.h, entry.z].every(Number.isFinite));
+    assert.ok(entry.x >= 0 && entry.y >= 0 && entry.w > 0 && entry.h > 0);
+    for (const other of entries) if (entry !== other) {
+      assert.ok(entry.x + entry.w <= other.x || other.x + other.w <= entry.x || entry.y + entry.h <= other.y || other.y + other.h <= entry.y, '默认预览应能分别看到各张卡');
+    }
+  }
 
-  assert.throws(() => callTool(session, 'set_layout', { cardId: parent, layout: 'plane' }), /坐标/);
+  const explicitParent = idOf(callTool(session, 'create_card', { title: 'Explicit' }));
+  const explicitChild = idOf(callTool(session, 'create_card', { title: 'Positioned', parentId: explicitParent }));
+  const placement = { x: 1, y: 2, w: 100, h: 60, z: 7 };
 
   const ok = callTool(session, 'set_layout', {
-    cardId: parent,
+    cardId: explicitParent,
     layout: 'plane',
-    placements: [{ x: 1, y: 2, w: 100, h: 60, z: 1 }],
+    placements: [placement],
   }) as { layout: string };
   assert.equal(ok.layout, 'plane');
+  assert.deepEqual(session.state.children.get(explicitParent), [{ id: explicitChild, ...placement }]);
+  assert.equal(snap(replay(session.events)), snap(session.state), '默认及显式坐标必须都可从事件恢复');
 });

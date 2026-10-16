@@ -84,7 +84,7 @@ const LAYOUT_LABELS: Record<MenuLayout, string> = {
   ordered: '横列',
   tabs: '标签页',
   columns: '看板',
-  grid: '格子',
+  grid: '瀑布',
 };
 
 /**
@@ -191,15 +191,15 @@ test('每个选项都能真的落到 core 上（逐个试一遍）', async () =>
   const choices: MenuLayout[] = ['plain', 'ordered', 'tabs', 'columns', 'grid'];
 
   for (const layout of choices) {
-    const { session, buffered } = makeApp();
+    const { session, buffered, memory } = makeApp();
     const parent = createCard(session, { parentId: null, title: 'P' });
-    createCard(session, { parentId: parent, title: 'A' });
+    const child = createCard(session, { parentId: parent, title: 'A' });
 
     const mounted = mount(
       createElement(WebviewApp, {
         session,
         buffered,
-        backend: toAsync(createMemoryFs().ops),
+        backend: toAsync(memory.ops),
         windowId: parent,
         initialView: emptyViewState(),
       }),
@@ -213,6 +213,12 @@ test('每个选项都能真的落到 core 上（逐个试一遍）', async () =>
       await settle();
 
       assert.equal(session.state.cards.get(parent)?.layout, layout, `${layout} 应当生效`);
+      const expected = layout === 'plain' ? [{ id: child }] : [{ id: child, order: 0 }];
+      assert.deepEqual(session.state.children.get(parent), expected, `${layout} 必须连同子卡条目形状一起修改`);
+      await buffered.flushTo(toAsync(memory.ops));
+      const reopened = openWorkspace('/lm', memory.ops);
+      assert.equal(reopened.state.cards.get(parent)?.layout, layout, `${layout} 必须保存到后端`);
+      assert.deepEqual(reopened.state.children.get(parent), expected);
     } finally {
       mounted.unmount();
     }

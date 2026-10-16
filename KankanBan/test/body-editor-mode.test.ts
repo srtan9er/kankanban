@@ -12,21 +12,24 @@ import {setMarkdownEditorSelection,readMarkdownEditor} from '../src/webview/mark
 Object.assign(globalThis,{ResizeObserver:class{observe(){}disconnect(){}},OffscreenCanvas:class{getContext(){return {font:'',measureText:(text:string)=>({width:text.length*8})};}}});
 
 async function fixture(beforeEdit?:()=>Promise<void>){
- const session=openSession('/body-mode',{ops:createMemoryFs().ops}),id=createCard(session,{parentId:null,title:'Title',content:'# Heading\n\n**Bold** text'}),host=document.createElement('div'),root=createRoot(host);document.body.append(host);
- const render=()=>root.render(createElement(PrototypeNote,{card:session.state.cards.get(id)!,add:()=>{},children:null,breadcrumb:null,send:async request=>{if(request.kind==='edit'){await beforeEdit?.();executeAction(session,request);render();}return {};}}));
- await act(async()=>render());return {host,session,id,close:async()=>{await act(async()=>root.unmount());host.remove();}};
+ const session=openSession('/body-mode',{ops:createMemoryFs().ops}),id=createCard(session,{parentId:null,title:'Title',content:'# Heading\n\n**Bold** text'}),host=document.createElement('div'),root=createRoot(host);document.body.append(host);let editCalls=0;
+ const render=()=>root.render(createElement(PrototypeNote,{card:session.state.cards.get(id)!,add:()=>{},children:null,breadcrumb:null,send:async request=>{if(request.kind==='edit'){editCalls++;await beforeEdit?.();executeAction(session,request);render();}return {};}}));
+ await act(async()=>render());return {host,session,id,get editCalls(){return editCalls;},close:async()=>{await act(async()=>root.unmount());host.remove();}};
 }
 const modeButton=()=>document.querySelector<HTMLButtonElement>('.body-mode-toggle')!;
 
-for(const mode of ['visual','source'] as const)test(`right press saves and ends ${mode} input without changing its body surface or starting a window gesture`,async()=>{
- const f=await fixture(),pane=f.host.querySelector<HTMLElement>('.card-body-editor')!;try{
+for(const mode of ['visual','source'] as const)for(const alreadySaved of [false,true])test(`right press ${alreadySaved?'after autosave ends':'before autosave saves and ends'} ${mode} input without changing its body surface`,async context=>{
+ context.mock.timers.enable({apis:['setTimeout']});
+ const f=await fixture(),pane=f.host.querySelector<HTMLElement>('.card-body-editor')!,original=f.session.state.cards.get(f.id)!.content;try{
   if(mode==='source')await act(async()=>modeButton().click());else await act(async()=>f.host.querySelector('strong')!.dispatchEvent(new MouseEvent('click',{bubbles:true})));
   const editor=f.host.querySelector<HTMLElement>('[data-markdown-editor]')!;assert.equal(pane.dataset.bodyEditing,'true');
   const paste=new Event('paste',{bubbles:true,cancelable:true});Object.defineProperty(paste,'clipboardData',{value:{getData:()=> ' appended'}});await act(async()=>editor.dispatchEvent(paste));
-  const before=f.session.state.cards.get(f.id)!.content;let leaked=0;const leak=()=>leaked++;editor.addEventListener('pointerdown',leak);
+  assert.equal(f.editCalls,0,'autosave must not run before the controlled 200ms deadline');assert.equal(f.session.state.cards.get(f.id)!.content,original);
+  if(alreadySaved)await act(async()=>context.mock.timers.tick(200));
+  assert.equal(f.editCalls,alreadySaved?1:0);let leaked=0;const leak=()=>leaked++;editor.addEventListener('pointerdown',leak);
   const right=new MouseEvent('pointerdown',{bubbles:true,cancelable:true,button:2,buttons:2});await act(async()=>editor.dispatchEvent(right));
   assert.equal(pane.dataset.bodyEditing,'false');assert.equal(pane.dataset.editorMode,mode);assert.ok(f.host.querySelector('[data-markdown-editor]')===editor);assert.equal(right.defaultPrevented,true);assert.equal(leaked,0);
-  assert.ok(f.session.state.cards.get(f.id)!.content.includes(' appended'));assert.notEqual(f.session.state.cards.get(f.id)!.content,before);
+  assert.ok(f.session.state.cards.get(f.id)!.content.includes(' appended'));assert.equal(f.editCalls,1,alreadySaved?'right exit must not write an already acknowledged draft again':'right exit must save without relying on the paused autosave timer');
  }finally{await f.close();}
 });
 

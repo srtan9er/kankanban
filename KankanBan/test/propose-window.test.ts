@@ -21,8 +21,10 @@ import { createRoot, type Root } from 'react-dom/client';
 
 import '../src/node/bootstrap.ts';
 import { stableStringify } from '../src/core/subtree.ts';
-import { openWindowsOf, readViewState, emptyViewState } from '../src/core/view-state.ts';
+import { openWindowsOf, readViewState, emptyViewState, windowViewFor } from '../src/core/view-state.ts';
 import { desktopCards } from '../src/core/windows.ts';
+import { parentIndexOf } from '../src/core/indexes.ts';
+import { wantedCardWindows } from '../src/webview/window-sync.ts';
 import { createCard, openSession } from '../src/core/workspace.ts';
 import type { Session } from '../src/core/workspace.ts';
 import { toAsync } from '../src/platform/async-fs-ops.ts';
@@ -222,7 +224,7 @@ test('从 main 的桌面卡片条点一下 → 窗口回来了（用户要的"�
   }
 });
 
-test('撤销「提出」→ 窗口也跟着收回（卡片回到容器里，就不再是桌面卡片）', async () => {
+test('撤销「提出」只恢复树上归属，仍存活子卡的独立窗口继续保留', async () => {
   const mounted = fixture();
   try {
     openChildMenu(mounted);
@@ -234,12 +236,17 @@ test('撤销「提出」→ 窗口也跟着收回（卡片回到容器里，就�
     await settle();
 
     assert.deepEqual(desktopCards(mounted.session.state), ['c1'], '树撤回去了');
+    assert.equal(parentIndexOf(mounted.session.state).get('c2'), 'c1');
+    assert.equal(mounted.session.state.cards.get('c2')?.deleted, false);
+    const restoredView = readViewState('/app', mounted.buffered.ops);
     assert.deepEqual(
-      openWindowsOf(readViewState('/app', mounted.buffered.ops)),
-      [],
-      '它已经不是桌面卡片了，openWindows 里的残留会被子集关系顺手剪掉',
+      openWindowsOf(restoredView),
+      ['c2'],
+      '独立窗口的存在不依赖卡片是否位于树上根级',
     );
-    assert.equal(queryAll(mounted.container, '.desktop-chip').length, 0, '桌面卡片条上也不该再有它');
+    assert.equal(windowViewFor(restoredView, 'c2').focusId, 'c2');
+    assert.deepEqual(wantedCardWindows(mounted.session.state, restoredView.openWindows, 'c1'), ['c2'], '原生窗口对账也必须继续保留这张子卡的窗口');
+    assert.equal(queryAll(mounted.container, '.desktop-chip').length, 0, '根卡导航隐藏回到树下的子卡，但不等于关闭它的独立窗口');
   } finally {
     mounted.unmount();
   }

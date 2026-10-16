@@ -1,4 +1,11 @@
 {
+  "windowControls": {
+    "collapse": "折叠窗口",
+    "expand": "展开窗口",
+    "minimize": "最小化窗口",
+    "close": "关闭窗口",
+    "closeApp": "退出应用"
+  },
   "tables": {
     "layout": "表格排版",
     "collapse": "折叠表格",
@@ -703,7 +710,11 @@
     "text007": "无法运行 Git：{arg0}",
     "chooseWorkspace": "选择工作区文件夹",
     "folderPickerFailed": "无法打开文件夹选择器：{arg0}",
-    "folderPickerUnsupported": "当前系统尚不支持文件夹选择，请输入完整路径。"
+    "folderPickerUnsupported": "当前系统尚不支持文件夹选择，请输入完整路径。",
+    "windowChainInvalid": "窗口排列关系无效：{arg0}",
+    "windowChainSaveFailed": "无法保存窗口排列：{arg0}",
+    "windowChainRollbackFailed": "窗口操作失败：{arg0}；恢复时还遇到错误：{arg1}",
+    "windowChainOrderFailed": "无法调整窗口链层级：{arg0}"
   },
   "native/lib": {
     "text001": "取窗口槽位失败：{arg0}",

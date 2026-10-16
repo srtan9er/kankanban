@@ -437,14 +437,24 @@ html.resizing-note #root,html.resizing-note #root *{cursor:nwse-resize!important
 html[data-window-kind=manager],html[data-window-kind=manager] body,html[data-window-kind=manager] #root { background:transparent; }
 #root .manager-shell { isolation:isolate; clip-path:inset(0 round var(--card-radius)); cursor:default; }
 #root .manager-shell .workspace-main.proto-manager { padding:0; }
-#root .manager-shell .manager-navigation { display:flex; align-items:center; gap:16px; padding:12px 16px 10px; flex:none; border-bottom:0; }
+#root .manager-shell .manager-navigation { display:flex; align-items:center; gap:16px; height:38px; min-height:38px; padding:0 8px 0 14px; flex:none; border-bottom:0; }
 #root .manager-shell .manager-navigation > strong { font-size:14px; font-weight:600; margin-right:auto; }
 #root .manager-shell .manager-tabs { display:flex; gap:4px; order:1; }
 #root .manager-shell .manager-tabs button { padding:6px 10px; border:0; background:transparent; border-radius:calc(var(--card-radius) * .6); font-size:12px; color:var(--muted); }
 #root .manager-shell .manager-tabs button:hover { background:var(--palette-card-tint-50); color:var(--text); }
 #root .manager-shell .manager-tabs button.active { background:var(--palette-accent-tint-90); color:var(--palette-accent); }
-#root .manager-shell .manager-close { order:2; display:grid; place-items:center; width:26px; height:26px; padding:0; border:0; background:transparent; font-size:18px; color:var(--muted); }
-#root .manager-shell .manager-close:hover { background:var(--palette-danger-tint-90); color:var(--palette-danger); }
+#root .manager-shell .manager-window-controls { order:2; display:flex; align-items:center; flex:none; gap:2px; }
+#root .manager-shell .manager-window-controls button { display:grid; place-items:center; flex:none; width:26px; height:26px; padding:0; border:0; border-radius:calc(var(--card-radius) * .6); background:transparent; color:var(--muted); }
+#root .manager-shell .manager-window-controls button:hover:not(:disabled) { background:var(--palette-card-tint-50); color:var(--text); }
+#root .manager-shell .manager-window-controls svg { display:block; width:16px; height:16px; fill:none; stroke:currentColor; stroke-width:1.5; stroke-linecap:round; stroke-linejoin:round; }
+#root .manager-shell .manager-window-controls .manager-close:hover:not(:disabled) { background:var(--palette-danger-tint-90); color:var(--palette-danger); }
+#root .manager-shell[data-manager-collapsed=true] { height:38px; max-height:38px; overflow:hidden; }
+#root .manager-shell[data-manager-collapsed=true] .workspace-main { flex:none; width:100%; height:var(--manager-expanded-height,100%); min-height:var(--manager-expanded-height,100%); }
+#root .manager-shell[data-manager-collapsed=true] .workspace-main > :not(.manager-navigation),
+#root .manager-shell[data-manager-collapsed=true] .workspace-main > :not(.manager-navigation) *,
+#root .manager-shell[data-manager-collapsed=true] > :not(.workspace-main) { visibility:hidden!important; pointer-events:none!important; }
+#root .manager-shell[data-manager-collapsed=true] .manager-tabs { display:none; }
+html[data-window-kind=manager][data-manager-collapsed=true] .viewport-ink-toolbar { visibility:hidden!important; pointer-events:none!important; }
 #root .manager-shell .topbar { height:38px; padding:0 16px; gap:14px; background:var(--palette-card-tint-30); border-bottom:1px solid var(--palette-card-border-tint-60); }
 #root .manager-shell .local-badge { max-width:45%; overflow:hidden; text-overflow:ellipsis; font-size:11px; }
 #root .manager-shell .manager-home { display:flex; flex-direction:column; flex:1; min-height:0; padding:20px 20px 12px; overflow:hidden; }
@@ -538,7 +548,7 @@ html[data-window-kind=manager],html[data-window-kind=manager] body,html[data-win
 .body-images .card-image > img { height:auto; max-height:75vh; }
 .image-error { color:var(--palette-danger); font-size:11px; overflow-wrap:anywhere; }
 .image-drop-hint { position:absolute; inset:4px; display:grid; place-items:center; z-index:100; pointer-events:none; border:2px dashed var(--palette-accent); background:color-mix(in srgb,var(--palette-accent-tint-90) 70%,transparent); color:var(--palette-accent); }
-#root .share-card-button { flex:none; width:22px; height:22px; padding:0; margin-left:4px; font-size:14px; }
+#root .card-menu-button, #root .share-card-button { display:grid; place-items:center; flex:none; width:22px; height:22px; padding:0; margin-left:4px; font-size:14px; }
 
 #root .proto-note .card-body-editor[data-body-editing="true"] .markdown-editor.content { cursor:text; user-select:text; }
 #root .edit-dialog .markdown-editor { width:100%; height:min(50vh,420px); padding:12px; border:1px solid var(--line); border-radius:6px; color:var(--text); background:var(--surface); font:13px/1.8 Consolas,monospace; }

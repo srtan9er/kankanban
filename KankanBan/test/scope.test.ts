@@ -44,7 +44,7 @@ test('内置卡表与 §2.2 一致', () => {
       ['000', 'main', 'tabs'],
       ['001', 'board', 'columns'],
       ['002', 'inspiration', 'plane'],
-      ['003', 'prefabs', 'grid'],
+      ['003', 'prefabs', 'library'],
     ],
   );
 });

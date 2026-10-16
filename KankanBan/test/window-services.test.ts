@@ -69,3 +69,32 @@ test('position sync coalesces frames, adjusts display scale, respects fixed move
   connection.resetOrigin({x:30,y:50});fixed=false;scaled!({payload:{scaleFactor:1}});moved!({payload:{x:31,y:52}});assert.deepEqual(shifts.at(-1),{x:1,y:2});assert.equal(frames.size,1);
  }finally{connection.dispose();}assert.equal(frames.size,0);assert.equal(count(),0);assert.equal(moved,undefined);assert.equal(scaled,undefined);
 });
+
+test('chain followers keep canvas fixed through late final move events and resume after settling frames',async()=>{
+ const {bus,count}=busFixture(),positions=new WindowPositions(),shifts:{x:number;y:number}[]=[],frames=new Map<number,FrameRequestCallback>();let frameId=0,point={x:10,y:20},moved!:((event:{payload:{x:number;y:number}})=>void);
+ const native:PositionWindow={outerPosition:async()=>({...point}),scaleFactor:async()=>2,onMoved:async handler=>{moved=handler;return()=>{};},onScaleChanged:async()=>()=>{}};
+ const connection=await connectWindowPositions({label:'card-c__follower',window:native,bus,positions,fixed:()=>false,shift:delta=>shifts.push(delta),notify:()=>{},error:reason=>assert.fail(reason),frames:{request:callback=>{frames.set(++frameId,callback);return frameId;},cancel:id=>{frames.delete(id);}}});
+ const frame=async()=>{const callbacks=[...frames.values()];frames.clear();callbacks.forEach(callback=>callback(0));await Promise.resolve();};
+ const move=(x:number,y:number)=>{point={x,y};moved({payload:point});};
+ try{
+  await bus.emit('kkb:window-chain-motion',{active:true,fixed:true});move(30,40);assert.deepEqual(shifts,[]);
+  await bus.emit('kkb:window-chain-motion',{active:false,fixed:true});await Promise.resolve();move(34,44);assert.deepEqual(shifts,[],'the final queued native position must not compensate the canvas');
+  await frame();await frame();move(38,48);assert.deepEqual(shifts,[{x:2,y:2}]);
+  await bus.emit('kkb:window-chain-motion',{active:true,fixed:false});move(42,52);assert.deepEqual(shifts.at(-1),{x:2,y:2});
+  await bus.emit('kkb:window-chain-motion',{active:true,fixed:true});await bus.emit('kkb:window-chain-motion',{active:false,fixed:true});await bus.emit('kkb:window-chain-motion',{active:true,fixed:true});await frame();await frame();move(46,56);assert.equal(shifts.length,2,'an older ending cannot release a newer fixed chain drag');
+ }finally{connection.dispose();}assert.equal(count(),0);assert.equal(frames.size,0);
+});
+
+test('released fixed dragging keeps canvas compensation disabled throughout native follow frames',async()=>{
+ const {bus,count}=busFixture(),frames=new Map<number,FrameRequestCallback>(),shifts:{x:number;y:number}[]=[];let frameId=0,point={x:10,y:20},localFixed=true,moved!:((event:{payload:{x:number;y:number}})=>void);
+ const native:PositionWindow={outerPosition:async()=>({...point}),scaleFactor:async()=>2,onMoved:async handler=>{moved=handler;return()=>{};},onScaleChanged:async()=>()=>{}};
+ const connection=await connectWindowPositions({label:'card-c__settling',window:native,bus,positions:new WindowPositions(),fixed:()=>localFixed,shift:delta=>shifts.push(delta),notify:()=>{},error:reason=>assert.fail(reason),frames:{request:callback=>{frames.set(++frameId,callback);return frameId;},cancel:id=>{frames.delete(id);}}});
+ const frame=async()=>{const callbacks=[...frames.values()];frames.clear();callbacks.forEach(callback=>callback(0));await Promise.resolve();};
+ const move=(x:number,y:number)=>{point={x,y};moved({payload:point});};
+ try{
+  await bus.emit('kkb:window-chain-motion',{active:true,fixed:true});move(12,22);localFixed=false;
+  for(let index=0;index<10;index++){move(14+index*2,24+index*2);await frame();}
+  assert.deepEqual(shifts,[],'pointer release must not end the native fixed-motion guard while followers keep moving');
+  await bus.emit('kkb:window-chain-motion',{active:false,fixed:true});await Promise.resolve();move(36,46);await frame();assert.deepEqual(shifts,[]);await frame();move(38,48);assert.deepEqual(shifts,[{x:1,y:1}]);
+ }finally{connection.dispose();}assert.equal(count(),0);assert.equal(frames.size,0);
+});

@@ -5,7 +5,12 @@ use tauri::{Manager, PhysicalPosition, LogicalSize};
 #[derive(Clone, Serialize, Deserialize)]
 pub struct WindowPrefs { pub x: i32, pub y: i32, pub width: f64, pub height: f64, pub collapsed: bool, pub pinned: bool }
 #[derive(Default)]
-pub struct DesktopState { pub boards: Mutex<BTreeSet<String>>, pub root: Mutex<Option<PathBuf>>, pub prefs: Mutex<BTreeMap<String, WindowPrefs>> }
+pub struct DesktopState {
+    pub boards: Mutex<BTreeSet<String>>, pub root: Mutex<Option<PathBuf>>, pub prefs: Mutex<BTreeMap<String, WindowPrefs>>,
+    pub chains: Mutex<crate::window_chain_runtime::WindowChainRuntime>,
+    pub chain_destroy_suppression: Mutex<BTreeSet<String>>,
+    pub chain_effects: tokio::sync::Mutex<()>,
+}
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -31,12 +36,14 @@ fn board_min_width(main: bool) -> f64 {
         + if main {m.manager_padding + m.sidebar_width} else {m.note_padding}
 }
 fn minimum_height(app: &tauri::AppHandle, window: &tauri::WebviewWindow) -> f64 {
-    if window.label() == "main" {
-        let board = app.state::<DesktopState>().boards.lock().map(|b|b.contains(window.label())).unwrap_or(false);
-        return if board {layout_metrics().card_min_height + layout_metrics().board_main_chrome_height} else {320.0};
-    }
+    let main=window.label()=="main";
+    let board=app.state::<DesktopState>().boards.lock().map(|b|b.contains(window.label())).unwrap_or(false);
     let collapsed = app.state::<DesktopState>().prefs.lock().ok().and_then(|p| p.get(window.label()).map(|p|p.collapsed)).unwrap_or(false);
-    if collapsed {38.0} else {note_min_height()}
+    minimum_window_height(main,collapsed,board)
+}
+fn minimum_window_height(main: bool, collapsed: bool, board: bool) -> f64 {
+    if collapsed {38.0} else if main {if board {layout_metrics().card_min_height+layout_metrics().board_main_chrome_height}else{320.0}}
+    else {note_min_height()}
 }
 
 fn minimum_width(app: &tauri::AppHandle, window: &tauri::WebviewWindow) -> f64 {
@@ -46,6 +53,8 @@ fn minimum_width(app: &tauri::AppHandle, window: &tauri::WebviewWindow) -> f64 {
 
 #[tauri::command]
 pub async fn set_board_view(app: tauri::AppHandle, window: tauri::WebviewWindow, board: bool) -> Result<(), String> {
+    crate::window_chain_runtime::with_window_effects(&app,|| {
+    crate::window_chain_runtime::cancel_active(&app)?;
     {
         let state = app.state::<DesktopState>();
         let mut boards = state.boards.lock().map_err(|e| e.to_string())?;
@@ -60,7 +69,9 @@ pub async fn set_board_view(app: tauri::AppHandle, window: tauri::WebviewWindow,
         window.set_size(LogicalSize::new((size.width as f64 / scale).max(width), (size.height as f64 / scale).max(height))).map_err(|e| e.to_string())?;
     }
     save_window(&app, &window);
+    crate::window_chain_runtime::reflow(&app,window.label(),true)?;
     Ok(())
+    }).await
 }
 
 fn app_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> { app.path().app_data_dir().map_err(|e| e.to_string()) }
@@ -142,6 +153,7 @@ pub fn root(app: &tauri::AppHandle) -> Result<PathBuf, String> {
         }
     }
     *state.prefs.lock().map_err(|e| e.to_string())? = fs::read(root.join(".kkb/window-prefs.json")).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
+    *state.chains.lock().map_err(|e|e.to_string())?=crate::window_chain_runtime::load(&root);
     *stored = Some(root.clone());
     Ok(root)
 }
@@ -168,30 +180,46 @@ fn process_alive(pid: u32) -> bool { std::path::Path::new(&format!("/proc/{pid}"
 
 pub fn release(app: &tauri::AppHandle) {
     crate::mcp_bridge::stop(app);
+    if let Ok(mut runtime)=app.state::<DesktopState>().chains.lock(){runtime.suspended=true;}
     if let Ok(mut stored) = app.state::<DesktopState>().root.lock() {
         if let Some(root) = stored.take() { let lock = root.join(".kkb/writer.lock"); let _ = fs::remove_file(lock.join("pid")); let _ = fs::remove_dir(lock); }
     }
 }
 pub fn save_window(app: &tauri::AppHandle, window: &tauri::WebviewWindow) {
+    let _=save_windows(app,std::iter::once(window.clone()));
+}
+pub fn save_windows(app: &tauri::AppHandle, windows: impl IntoIterator<Item=tauri::WebviewWindow>) -> Result<(),String> {
+    save_windows_with_pins(app,windows,None)
+}
+pub fn save_pin_preferences(app: &tauri::AppHandle, pins: &BTreeMap<String,bool>) -> Result<(),String> {
+    // Existing geometry can be between follow frames. Pin-only changes must
+    // preserve it until the display motion publishes its settled positions.
+    let missing={let state=app.state::<DesktopState>();let prefs=state.prefs.lock().map_err(|error|error.to_string())?;
+        pins.keys().filter(|label|!prefs.contains_key(*label)).cloned().collect::<BTreeSet<_>>()};
+    save_windows_with_pins(app,app.webview_windows().into_iter().filter(|(label,_)|missing.contains(label)).map(|(_,window)|window),Some(pins))
+}
+fn save_windows_with_pins(app: &tauri::AppHandle, windows: impl IntoIterator<Item=tauri::WebviewWindow>, pins: Option<&BTreeMap<String,bool>>) -> Result<(),String> {
     let state = app.state::<DesktopState>();
-    let root = state.root.lock().ok().and_then(|r| r.clone());
-    let Some(root) = root else { return; };
-    let (Ok(position), Ok(size)) = (window.outer_position(), window.inner_size()) else { return; };
-    let scale = window.scale_factor().unwrap_or(1.0);
-    let Ok(mut prefs) = state.prefs.lock() else { return; };
-    let value = prefs.entry(window.label().to_owned()).or_insert(WindowPrefs { x: position.x, y: position.y, width: size.width as f64 / scale, height: size.height as f64 / scale, collapsed: false, pinned: false });
-    value.x = position.x; value.y = position.y;
-    if !value.collapsed { value.width = size.width as f64 / scale; value.height = size.height as f64 / scale; }
-    if let Ok(bytes) = serde_json::to_vec_pretty(&*prefs) {
-        let tmp = root.join(".kkb/window-prefs.tmp");
-        if fs::write(&tmp, bytes).is_ok() { let _ = fs::rename(tmp, root.join(".kkb/window-prefs.json")); }
+    let root = state.root.lock().map_err(|error|error.to_string())?.clone();
+    let Some(root) = root else { return Ok(()); };
+    let mut prefs=state.prefs.lock().map_err(|error|error.to_string())?;
+    for window in windows {
+        let position=window.outer_position().map_err(|error|error.to_string())?;
+        let size=window.inner_size().map_err(|error|error.to_string())?;
+        let scale=window.scale_factor().map_err(|error|error.to_string())?;
+        let value=prefs.entry(window.label().to_owned()).or_insert(WindowPrefs{x:position.x,y:position.y,width:size.width as f64/scale,height:size.height as f64/scale,collapsed:false,pinned:false});
+        value.x=position.x;value.y=position.y;
+        if !value.collapsed {value.width=size.width as f64/scale;value.height=size.height as f64/scale;}
     }
+    if let Some(pins)=pins {for (label,pinned) in pins {if let Some(value)=prefs.get_mut(label){value.pinned=*pinned;}}}
+    let bytes=serde_json::to_vec_pretty(&*prefs).map_err(|error|error.to_string())?;
+    let temporary=root.join(".kkb/window-prefs.tmp");fs::write(&temporary,bytes).and_then(|()|fs::rename(temporary,root.join(".kkb/window-prefs.json"))).map_err(|error|error.to_string())
 }
 pub fn restore_window(app: &tauri::AppHandle, window: &tauri::WebviewWindow) {
     let _ = window.set_min_size(Some(LogicalSize::new(minimum_width(app,window),minimum_height(app,window))));
     let pref = app.state::<DesktopState>().prefs.lock().ok().and_then(|p| p.get(window.label()).cloned());
     if let Some(p) = pref {
-        let _ = window.set_size(LogicalSize::new(p.width.max(minimum_width(app, window)), if p.collapsed { 38.0 } else { p.height.max(note_min_height()) }));
+        let _ = window.set_size(LogicalSize::new(p.width.max(minimum_width(app, window)), if p.collapsed { 38.0 } else { p.height.max(minimum_height(app,window)) }));
         let monitors = window.available_monitors().unwrap_or_default();
         let visible = monitors.iter().any(|m| { let a = m.work_area(); p.x + 80 > a.position.x && p.y + 38 > a.position.y && p.x < a.position.x + a.size.width as i32 && p.y < a.position.y + a.size.height as i32 });
         if visible { let _ = window.set_position(PhysicalPosition::new(p.x, p.y)); }
@@ -201,18 +229,36 @@ pub fn restore_window(app: &tauri::AppHandle, window: &tauri::WebviewWindow) {
 
 #[tauri::command]
 pub async fn finish_exit(app: tauri::AppHandle, window: tauri::WebviewWindow) -> Result<(), String> {
+    crate::window_chain_runtime::with_window_effects(&app,|| {
     if window.label() != "main" { return Err("只有主窗口可以退出应用".into()); }
-    for w in app.webview_windows().values() { save_window(&app, w); }
+    crate::window_chain_runtime::suspend(&app)?;
+    if let Err(error)=save_windows(&app,app.webview_windows().into_values()) {
+        app.state::<DesktopState>().chains.lock().map_err(|error|error.to_string())?.suspended=false;
+        return Err(error);
+    }
     release(&app); app.exit(0); Ok(())
+    }).await
 }
 #[tauri::command]
 pub async fn reload_workspace(app: tauri::AppHandle, window: tauri::WebviewWindow) -> Result<(), String> {
+    crate::window_chain_runtime::with_window_effects(&app,|| {
     require_main(&window)?;
     let previous = root(&app)?;
-    for w in app.webview_windows().values() { save_window(&app, w); }
+    crate::window_chain_runtime::suspend(&app)?;
+    if let Err(error)=save_windows(&app,app.webview_windows().into_values()) {
+        app.state::<DesktopState>().chains.lock().map_err(|error|error.to_string())?.suspended=false;
+        return Err(error);
+    }
     // Destroy mirrors before changing the writer root, so no old card can write into the new workspace.
     for (label, card_window) in app.webview_windows() {
-        if label.starts_with("card-") { card_window.destroy().map_err(|e|e.to_string())?; }
+        if label.starts_with("card-") {
+            crate::window_chain_runtime::suppress_destroy(&app,&label)?;
+            if let Err(error)=card_window.destroy(){
+                app.state::<DesktopState>().chain_destroy_suppression.lock().map_err(|error|error.to_string())?.remove(&label);
+                app.state::<DesktopState>().chains.lock().map_err(|error|error.to_string())?.suspended=false;
+                return Err(error.to_string());
+            }
+        }
     }
     release(&app);
     if let Err(error) = root(&app) {
@@ -225,6 +271,7 @@ pub async fn reload_workspace(app: tauri::AppHandle, window: tauri::WebviewWindo
     app.state::<DesktopState>().boards.lock().map_err(|e|e.to_string())?.clear();
     restore_window(&app, &window);
     Ok(())
+    }).await
 }
 
 #[tauri::command]
@@ -233,22 +280,51 @@ pub async fn window_preferences(app: tauri::AppHandle, window: tauri::WebviewWin
 }
 #[tauri::command]
 pub async fn set_note_mode(app: tauri::AppHandle, window: tauri::WebviewWindow, collapsed: Option<bool>, pinned: Option<bool>) -> Result<(), String> {
-    save_window(&app, &window);
+    crate::window_chain_runtime::with_window_effects(&app,||set_note_mode_inner(&app,&window,collapsed,pinned)).await
+}
+pub(crate) fn set_note_mode_inner(app: &tauri::AppHandle, window: &tauri::WebviewWindow, collapsed: Option<bool>, pinned: Option<bool>) -> Result<(), String> {
+    if collapsed.is_some(){crate::window_chain_runtime::cancel_active(app)?;}
+    if collapsed.is_some() || !crate::window_chain_runtime::display_active(app)?{save_windows(app,std::iter::once(window.clone()))?;}
     let preference = { let state = app.state::<DesktopState>(); let mut prefs = state.prefs.lock().map_err(|e| e.to_string())?;
         let p = prefs.get_mut(window.label()).ok_or("窗口状态不存在")?;
-        if let Some(value) = collapsed { p.collapsed = value; } if let Some(value) = pinned { p.pinned = value; } p.clone() };
+        if let Some(value) = collapsed { p.collapsed = value; } p.clone() };
     window.set_min_size(Some(LogicalSize::new(minimum_width(&app,&window),minimum_height(&app,&window)))).map_err(|e|e.to_string())?;
-    window.set_size(LogicalSize::new(preference.width.max(minimum_width(&app, &window)), if preference.collapsed { 38.0 } else { preference.height.max(note_min_height()) })).map_err(|e| e.to_string())?;
+    window.set_size(LogicalSize::new(preference.width.max(minimum_width(&app, &window)), if preference.collapsed { 38.0 } else { preference.height.max(minimum_height(&app,&window)) })).map_err(|e| e.to_string())?;
     window.set_always_on_top(preference.pinned).map_err(|e| e.to_string())?;
-    save_window(&app, &window); Ok(())
+    if let Some(pinned)=pinned {crate::window_chain_runtime::set_pinned(app,window.label(),pinned)?;}
+    if collapsed.is_some(){crate::window_chain_runtime::reflow(&app,window.label(),true)?;save_windows(app,std::iter::once(window.clone()))?;}Ok(())
 }
 #[tauri::command]
 pub async fn move_note(app: tauri::AppHandle, window: tauri::WebviewWindow, x: f64, y: f64, finish: bool) -> Result<serde_json::Value, String> {
+    crate::window_chain_runtime::with_window_effects(&app,|| {
+    if let Some(hints)=crate::window_chain_runtime::move_active(&app,&window,x,y,finish)? {return Ok(hints);}
     let hint = crate::snap::move_and_snap(&app, &window, x, y, finish)?;
     if finish { save_window(&app, &window); } Ok(hint)
+    }).await
+}
+#[tauri::command]
+pub async fn begin_window_drag(app: tauri::AppHandle, window: tauri::WebviewWindow, fixed: bool) -> Result<(),String> {
+    crate::window_chain_runtime::with_window_effects(&app,||crate::window_chain_runtime::begin(&app,window.label(),fixed)).await
+}
+#[tauri::command]
+pub async fn cancel_window_drag(app: tauri::AppHandle, window: tauri::WebviewWindow) -> Result<(),String> {
+    crate::window_chain_runtime::with_window_effects(&app,||crate::window_chain_runtime::cancel(&app,window.label())).await
+}
+#[tauri::command]
+pub async fn raise_window_chain(app:tauri::AppHandle,window:tauri::WebviewWindow)->Result<(),String>{
+    crate::window_chain_runtime::with_window_effects(&app,||{
+        let chains=app.state::<DesktopState>().chains.lock().map_err(|error|error.to_string())?.visible_chains();
+        crate::window_chain_zorder::raise_group(&app,&chains,window.label(),true)
+    }).await
+}
+#[tauri::command]
+pub async fn minimize_note(app: tauri::AppHandle, window: tauri::WebviewWindow) -> Result<(),String> {
+    crate::window_chain_runtime::with_window_effects(&app,||window.minimize().map_err(|error|error.to_string())).await
 }
 #[tauri::command]
 pub async fn resize_note(app: tauri::AppHandle, window: tauri::WebviewWindow, width: f64, height: f64, finish: Option<bool>) -> Result<(), String> {
+    crate::window_chain_runtime::with_window_effects(&app,|| {
+    crate::window_chain_runtime::cancel_active(&app)?;
     if !width.is_finite() || !height.is_finite() { return Err("尺寸无效".into()); }
     let scale = window.scale_factor().unwrap_or(1.0);
     let area = window.current_monitor().ok().flatten().map(|m| m.work_area().size);
@@ -257,7 +333,9 @@ pub async fn resize_note(app: tauri::AppHandle, window: tauri::WebviewWindow, wi
     let min_h = minimum_height(&app, &window);
     let max_h = area.map(|s| s.height as f64 / scale).unwrap_or(1200.0).max(min_h);
     window.set_size(LogicalSize::new(width.clamp(min_w, max_w), height.clamp(min_h, max_h))).map_err(|e| e.to_string())?;
-    if finish.unwrap_or(true) { save_window(&app, &window); } Ok(())
+    crate::window_chain_runtime::reflow(&app,window.label(),finish.unwrap_or(true))?;
+    if finish.unwrap_or(true) {save_windows(&app,std::iter::once(window))?;} Ok(())
+    }).await
 }
 #[derive(Serialize)] pub struct Hit { label: String, x: f64, y: f64 }
 #[tauri::command]
@@ -294,8 +372,12 @@ pub async fn window_at_point(app: tauri::AppHandle, x: f64, y: f64, ignore_label
 }
 #[tauri::command]
 pub async fn position_card_window(app: tauri::AppHandle, card_id: String, x: f64, y: f64) -> Result<(), String> {
+    crate::window_chain_runtime::with_window_effects(&app,|| {
+    crate::window_chain_runtime::cancel_active(&app)?;
     let w = app.get_webview_window(&format!("card-{card_id}")).ok_or("窗口尚未打开")?;
-    w.set_position(PhysicalPosition::new(x as i32, y as i32)).map_err(|e| e.to_string())?; save_window(&app, &w); Ok(())
+    w.set_position(PhysicalPosition::new(x as i32, y as i32)).map_err(|e| e.to_string())?;
+    crate::window_chain_runtime::reflow(&app,w.label(),true)?;save_windows(&app,std::iter::once(w))
+    }).await
 }
 pub(crate) fn command(program: &str) -> Command {
     let mut c = Command::new(program);
@@ -318,6 +400,13 @@ mod tests {
         assert_eq!(note_min_height(), 240.0);
         assert_eq!(board_min_width(false), 552.0);
         assert_eq!(board_min_width(true), 804.0);
+    }
+    #[test]
+    fn manager_can_collapse_to_title_height_without_losing_its_expanded_minimum() {
+        assert_eq!(minimum_window_height(true,true,false),38.0);
+        assert_eq!(minimum_window_height(true,true,true),38.0);
+        assert_eq!(minimum_window_height(true,false,false),320.0);
+        assert_eq!(minimum_window_height(false,true,false),38.0);
     }
     #[test]
     fn display_paths_remove_windows_verbatim_prefix_without_breaking_unc() {

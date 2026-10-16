@@ -26,6 +26,7 @@ import {
   setRegionSize,
   windowViewFor,
   writeViewState,
+  type ViewState,
 } from '../src/core/view-state.ts';
 import {
   breadcrumbTo,
@@ -60,7 +61,7 @@ function withSession(body: (session: Session, root: string) => void): void {
 
 test('view-state 往返：写完读回来逐字段一致', () => {
   withSession((session, root) => {
-    let view = emptyViewState();
+    let view: ViewState = { ...emptyViewState(), skin: 'dark', theme: 'custom.css', canvasSwapButtons: false, cardRadius: 14 };
     view = setFocus(view, 'c1', 'c3');
     view = setRegionSize(view, 'c1', 'content', 321);
     view = setBounds(view, 'c1', { x: 10, y: 20, width: 400, height: 300 });
@@ -136,7 +137,7 @@ test('rendererOf：内置 id 用内置渲染器，不看 type', () => {
     assert.equal(rendererOf(session.state, '000'), 'tabs');
     assert.equal(rendererOf(session.state, '001'), 'columns');
     assert.equal(rendererOf(session.state, '002'), 'plane');
-    assert.equal(rendererOf(session.state, '003'), 'grid');
+    assert.equal(rendererOf(session.state, '003'), 'library');
 
     // 真的把内置卡建出来，结果不变
     const board = createCard(session, { id: '001', parentId: null, title: 'board', layout: 'columns' });

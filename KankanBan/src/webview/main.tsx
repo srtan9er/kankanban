@@ -53,11 +53,12 @@ async function boot(): Promise<void> {
     }
   } else {
     try {
-      const stored = JSON.parse(localStorage.getItem('kkb-preview-data') ?? '{}') as Record<string,string>;
+      const stored = JSON.parse(localStorage.getItem('kkb-preview-data') ?? '{}') as Record<string,unknown>;
       for (const [path, value] of Object.entries(stored)) {
-        if (!path.startsWith('/preview/') || typeof value !== 'string') continue;
-        disk.ops.mkdirp(path.slice(0, path.lastIndexOf('/')));
-        disk.ops.writeFile(path, value);
+        const localPath=path.startsWith('/preview/')?path:path.startsWith('preview/')?`/${path}`:null;
+        if (localPath===null || typeof value !== 'string') continue;
+        disk.ops.mkdirp(localPath.slice(0, localPath.lastIndexOf('/')));
+        disk.ops.writeFile(localPath, value);
       }
     } catch { /* Preview can always start fresh. */ }
     backend = toAsync(disk.ops);

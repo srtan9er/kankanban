@@ -1,6 +1,7 @@
 import {passedDragThreshold,swallowDragClick} from './pointer-gesture.ts';
 import {cardIdFromLabel,newExpansionId} from '../core/window-identity.ts';
 import {windowDragIntent,extractOnDesktop} from './window-drag-intent.ts';
+import {createWindowDragSession} from './window-drag-session.ts';
 import {orderedDrop,listNestingTarget,showOrderedMarker,type OrderedDrop} from './ordered-drop.ts';
 import {uiText} from '../i18n/text.ts';
 import {watchDragRelease} from './drag-release.ts';
@@ -102,10 +103,15 @@ export async function connectDesktopDrag({controller:c,label,window:w,windows,re
     let stopReleaseWatch=()=>{};
     let ending:Promise<void>=Promise.resolve();
     const {sourceWindow,reparent,positionOnly,movingWindow}=windowDragIntent({label,cardId:id,childBody,relationHandle,mode});
+    const windowDrag=movingWindow && label.startsWith('card-')?createWindowDragSession((command,args)=>invoke(command,args),fixed):null;
     const sourceBounds=positionOnly?Promise.all([w.innerPosition(),w.innerSize()]):null;
-    // Capture the new press immediately; only the window origin waits for old writes.
-    const pressCursor=movingWindow?cursorPosition():null;
-    const origin = movingWindow ? previous.then(()=>{if(current())dragState.fixed=fixed;return Promise.all([pressCursor!, w.outerPosition()]);}) : null;
+    // Begin only after the threshold. Native begin freezes any old follow motion;
+    // sampling before it would use an origin that can drift while this press waits.
+    let origin:Promise<[{x:number;y:number},{x:number;y:number}]>|null=null;
+    const motionOrigin=()=>origin??=previous.then(async()=>{
+      await windowDrag?.begin();
+      return Promise.all([cursorPosition(),w.outerPosition()]);
+    });
     const note = document.querySelector('.proto-note > .card');
     const clearHints = (): void => { note?.classList.remove('snap-left','snap-right','snap-top','snap-bottom','merge-ready'); };
     let chain = Promise.resolve();
@@ -118,31 +124,32 @@ export async function connectDesktopDrag({controller:c,label,window:w,windows,re
       moveFrame=requestAnimationFrame(()=>{
         moveFrame=null;
         motion=(async()=>{
-          const initial=await origin!;
+          const initial=await motionOrigin();
           const cursor=await cursorPosition();
           if(motionStopped)return;
           const point={x:initial[1].x+cursor.x-initial[0].x,y:initial[1].y+cursor.y-initial[0].y};
           if(lastMotionPoint?.x===point.x && lastMotionPoint.y===point.y)return;
           dragState.fixed=fixed;
-          latestHints=await invoke('move_note',{...point,finish:false});
+          latestHints=windowDrag?await windowDrag.move(point):await invoke('move_note',{...point,finish:false});
           lastMotionPoint=point;
           if(movingWindow){clearHints();for(const side of ['left','right','top','bottom'])if(latestHints[side])note?.classList.add(`snap-${side}`);}
-        })().catch(error=>{motionStopped=true;errorHandler(String(error));}).finally(()=>{if(!motionStopped)scheduleMotion();});
+        })().catch(error=>{motionStopped=true;errorHandler(String(error));void windowDrag?.cancel().catch(error=>errorHandler(String(error)));}).finally(()=>{if(!motionStopped)scheduleMotion();});
       });
     };
     const send = async (phase: 'move' | 'drop' | 'cancel'): Promise<void> => {
       if(cancelled && phase!=='cancel')return;
+      const initial = movingWindow && phase!=='cancel' ? await motionOrigin() : origin ? await origin : null;
       const cursor = await cursorPosition();
-      const initial = origin ? await origin : null;
       if(phase!=='cancel' && (cancelled || !current()))return;
       const position = initial ? { x: initial[1].x + cursor.x - initial[0].x, y: initial[1].y + cursor.y - initial[0].y } : null;
       clearHints();
       if (phase === 'cancel') {
-        if (initial) await invoke('move_note', { x: initial[1].x, y: initial[1].y, finish: false });
+        if(windowDrag)await windowDrag.cancel();
+        else if (initial) await invoke('move_note', { x: initial[1].x, y: initial[1].y, finish: false });
         await emit(`${CHANNEL}:drag`, { id, source: label, target: null, x:0,y:0,screenX:cursor.x,screenY:cursor.y,phase } satisfies Drag); return;
       }
       if(movingWindow) {
-        if(position && phase==='drop'){await invoke('move_note',{...position,finish:true});await request({kind:'window-state',windowLabel:label,changes:{operation:'move',position:await w.outerPosition()}});}
+        if(position && phase==='drop'){if(windowDrag)await windowDrag.move(position,true);else await invoke('move_note',{...position,finish:true});await request({kind:'window-state',windowLabel:label,changes:{operation:'move',position:await w.outerPosition()}});}
         return;
       }
       const hints = latestHints;
@@ -193,7 +200,7 @@ export async function connectDesktopDrag({controller:c,label,window:w,windows,re
       if(e.pointerId!==pointerId)return;
       if(combinedGesture && !(e.buttons&4) && (e.buttons&3)!==3){up();return;}
       if (!started && !passedDragThreshold({clientX:startX,clientY:startY},e)) return;
-      if (!started) captureTarget.setPointerCapture?.(pointerId);
+      if (!started) {captureTarget.setPointerCapture?.(pointerId);if(movingWindow)dragState.fixed=fixed;}
       started = true;
       if(movingWindow && !startedMotion){startedMotion=true;scheduleMotion();}
       e.preventDefault();
@@ -208,12 +215,12 @@ export async function connectDesktopDrag({controller:c,label,window:w,windows,re
       if(fixed)void w.outerPosition().then(position=>{if(current())positionSync.resetOrigin(position);}).finally(()=>{if(current())dragState.fixed=false;}).catch(error=>errorHandler(String(error)));
       document.documentElement.classList.remove('card-dragging');void emit(`${CHANNEL}:canvas-end`,{});
     };
-    const up = (): void => { if(ended)return;cleanup(); if (started) swallowDragClick(); if (started && !cancelled) ending=Promise.all([chain,motion]).then(() => send('drop')).catch(error => errorHandler(String(error))).finally(finish); };
+    const up = (): void => { if(ended)return;cleanup(); if (started) swallowDragClick(); if (started && !cancelled) ending=Promise.all([chain,motion]).then(() => send('drop')).catch(async error => {errorHandler(String(error));await windowDrag?.cancel().catch(reason=>errorHandler(String(reason)));}).finally(finish); };
     const cancel = (): void => { if(ended)return;cancelled = true; cleanup(); if (started) ending=Promise.all([chain,motion]).then(() => send('cancel')).catch(error => errorHandler(String(error))).finally(finish); };
-    stopActiveDrag=()=>{cancelled=true;cleanup();return Promise.all([chain,motion,ending]).then(()=>{if(current())dragState.fixed=false;});};
+    stopActiveDrag=()=>{cancelled=true;cleanup();return Promise.all([chain,motion,ending]).then(async()=>{await windowDrag?.cancel();if(current())dragState.fixed=false;});};
     const key = (e: KeyboardEvent): void => { if (e.key === 'Escape') cancel(); };
     document.addEventListener('pointermove', move); document.addEventListener('pointerup', up); document.addEventListener('pointercancel', cancel); document.addEventListener('keydown', key);
     stopReleaseWatch=watchDragRelease(captureTarget,pointerId,!inCanvas && mode!==undefined && event.buttons&2?2:event.buttons,up);
   };
- return {startDrag,dispose:()=>unlisteners.forEach(stop=>stop())};
+ return {startDrag,dispose:()=>{++dragGeneration;void stopActiveDrag?.().catch(error=>errorHandler(String(error)));unlisteners.forEach(stop=>stop());}};
 }
